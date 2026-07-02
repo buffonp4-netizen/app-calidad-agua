@@ -11,12 +11,26 @@ st.set_page_config(page_title="Sistema Híbrido Calidad Agua", page_icon="💧",
 
 st.markdown("""
 <style>
+    /* Toggle y campos */
     .stToggle { background-color: #f0f2f6; padding: 10px; border-radius: 5px; }
     .card-res { padding: 15px; border-radius: 10px; margin-bottom: 10px; }
+    
+    /* Tarjetas de resultado */
     .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
-    .danger-box { padding: 15px; background-color: #FFEBEE; border-radius: 8px; border-left: 8px solid #D32F2F; color: #B71C1C; font-weight: bold; }
+
+    /* Alerta de peligro (excede A3) */
+    .danger-box {
+        padding: 20px;
+        background: linear-gradient(135deg, #F8D7DA 0%, #F5C6CB 100%);
+        border-radius: 10px;
+        border-left: 8px solid #B71C1C;
+        color: #721C24;
+        font-weight: bold;
+        margin: 15px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
 
     /* Centrar tablas y contenido */
     [data-testid="stTable"] table,
@@ -27,6 +41,11 @@ st.markdown("""
     }
     th, td {
         text-align: center !important;
+    }
+
+    /* Títulos centrados */
+    h3, h4 {
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -337,7 +356,6 @@ with tab3:
                 st.metric("Confianza / Probabilidad de Potabilidad", f"{prob*100:.2f}%")
                 
                 if model_problematicos:
-                    # Convertir claves cortas a nombres completos
                     nombres_problematicos = [nombres_modelo_ui.get(p, p) for p in model_problematicos]
                     st.warning(f"Parámetros que afectan negativamente la potabilidad detectados: {', '.join(nombres_problematicos)}")
                 
