@@ -229,92 +229,90 @@ with tab2:
 with tab3:
     st.subheader("Resultados del Análisis")
     
+    # Inicializar estado para guardar los resultados si no existen
+    if "resultados_analisis" not in st.session_state:
+        st.session_state["resultados_analisis"] = None
+        st.session_state["detalles_eca"] = None
+        st.session_state["peor_categoria_eca"] = None
+
     active_model_keys = [k for k in campos_modelo.keys() if st.session_state.get(f"tog_{k}", False)]
     active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_norm_{k}", False)]
     
     st.markdown("### 🤖 Diagnóstico: Modelo Entrenado")
     st.metric("Parámetros seleccionados", len(active_model_keys))
-    if st.button("🚀 Ejecutar Diagnóstico", use_container_width=True):
-        st.info("Procesando datos... (lógica de IA aquí)")
     
-    st.markdown("---")
+    # BOTÓN DE EJECUCIÓN
+    if st.button("🚀 Ejecutar Diagnóstico", use_container_width=True):
+        with st.spinner("Procesando datos y analizando normativa..."):
+            # --- Lógica de MINSA ---
+            incumplimientos = []
+            for param in active_norm_keys:
+                valor = st.session_state.get(f"val_norm_{param}", 0.0)
+                info = NORMATIVA_COMPLETA[param]
+                minsa_lim = info['minsa']
+                if minsa_lim is None: continue
+                
+                if isinstance(minsa_lim, tuple):
+                    low, high = minsa_lim
+                    if not (low <= valor <= high):
+                        incumplimientos.append((param, valor, f"Rango {low} - {high}"))
+                elif info.get('invertido', False):
+                    if valor < minsa_lim:
+                        incumplimientos.append((param, valor, f"Mínimo: {minsa_lim}"))
+                else:
+                    if valor > minsa_lim:
+                        incumplimientos.append((param, valor, f"Máximo: {minsa_lim}"))
+            
+            # --- Lógica ECA ---
+            peor_cat = "A1"
+            detalles_eca = []
+            orden_eca = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
+            
+            for param in active_norm_keys:
+                valor = st.session_state.get(f"val_norm_{param}", 0.0)
+                info = NORMATIVA_COMPLETA[param]
+                cat = None
+                for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
+                    lim = info.get(subcat)
+                    if lim is None: continue
+                    # (Lógica simplificada de comparación)
+                    if isinstance(lim, tuple):
+                        if lim[0] <= valor <= lim[1]: cat = subcat.replace('eca_', '').upper(); break
+                    elif info.get('invertido', False):
+                        if valor >= lim: cat = subcat.replace('eca_', '').upper(); break
+                    else:
+                        if valor <= lim: cat = subcat.replace('eca_', '').upper(); break
+                
+                if cat is None: cat = "EXCEDE A3"
+                detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría ECA': cat})
+                if orden_eca.get(cat, 0) > orden_eca.get(peor_cat, 0): peor_cat = cat
 
-    if not active_norm_keys:
-        st.warning("⚠️ Selecciona parámetros en el Tab 2 para evaluar la normativa.")
-    else:
-        st.markdown("### 🏛️ Diagnóstico: Evaluación Normativa (MINSA/ECA)")
-        st.write(f"Evaluando **{len(active_norm_keys)}** parámetros activos:")
+            # Guardar en estado para que persista en pantalla
+            st.session_state["resultados_analisis"] = incumplimientos
+            st.session_state["detalles_eca"] = detalles_eca
+            st.session_state["peor_categoria_eca"] = peor_cat
 
-        # --- 1. Cumplimiento MINSA ---
-        incumplimientos = []
-        for param in active_norm_keys:
-            valor = st.session_state.get(f"val_norm_{param}", 0.0)
-            info = NORMATIVA_COMPLETA[param]
-            minsa_lim = info['minsa']
-            if minsa_lim is None:
-                continue
-            if isinstance(minsa_lim, tuple):
-                low, high = minsa_lim
-                if not (low <= valor <= high):
-                    incumplimientos.append((param, valor, f"Rango {low} - {high}"))
-            elif info.get('invertido', False):
-                if valor < minsa_lim:
-                    incumplimientos.append((param, valor, f"Mínimo: {minsa_lim}"))
-            else:
-                if valor > minsa_lim:
-                    incumplimientos.append((param, valor, f"Máximo: {minsa_lim}"))
-
-        if incumplimientos:
-            st.error(f"⚠️ {len(incumplimientos)} parámetros NO cumplen MINSA:")
-            df_inc = pd.DataFrame(incumplimientos, columns=['Parámetro', 'Valor', 'Límite MINSA'])
+    # --- MOSTRAR RESULTADOS (si existen en el estado) ---
+    if st.session_state["resultados_analisis"] is not None:
+        st.markdown("---")
+        st.markdown("### 🏛️ Diagnóstico: Evaluación Normativa")
+        
+        # Mostrar Incumplimientos
+        if st.session_state["resultados_analisis"]:
+            st.error(f"⚠️ {len(st.session_state['resultados_analisis'])} parámetros NO cumplen MINSA:")
+            df_inc = pd.DataFrame(st.session_state["resultados_analisis"], columns=['Parámetro', 'Valor', 'Límite MINSA'])
             st.table(df_inc)
         else:
             st.success("✅ Todos los parámetros activos CUMPLEN con la normativa MINSA.")
 
-        # --- 2. Clasificación ECA (Categoría 1 – Subcategorías A1, A2, A3) ---
-        st.markdown("#### 🌿 Clasificación según ECA (Nivel de tratamiento requerido)")
-        peor_categoria_eca = "A1"
-        detalles_eca = []
-        orden_eca = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
-
-        for param in active_norm_keys:
-            valor = st.session_state.get(f"val_norm_{param}", 0.0)
-            info = NORMATIVA_COMPLETA[param]
-            cat = None
-            invertido = info.get('invertido', False)
-            for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
-                lim = info.get(subcat)
-                if lim is None:
-                    continue
-                if isinstance(lim, tuple):
-                    low, high = lim
-                    if low <= valor <= high:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-                elif invertido:
-                    if valor >= lim:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-                else:
-                    if valor <= lim:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-            if cat is None:
-                cat = "EXCEDE A3"
-
-            detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría ECA': cat})
-            if orden_eca[cat] > orden_eca[peor_categoria_eca]:
-                peor_categoria_eca = cat
-
-        st.markdown(f"**Peor nivel detectado:** `{peor_categoria_eca}`")
-        if peor_categoria_eca == "A1":
-            st.info("🟢 **A1 – Desinfección simple:** cloración, ozonización. Agua fácilmente potabilizable.")
-        elif peor_categoria_eca == "A2":
-            st.warning("🟠 **A2 – Tratamiento convencional:** coagulación, floculación, sedimentación, filtración y desinfección.")
-        elif peor_categoria_eca == "A3":
-            st.error("🔴 **A3 – Tratamiento avanzado:** ósmosis inversa, carbón activado, oxidación avanzada. Alto costo.")
-        else:
-            st.error("⚫ **EXCEDE A3 – No apta para potabilización convencional.** Requiere tecnologías especiales o descarte para consumo humano.")
+        # Mostrar ECA
+        peor_eca = st.session_state["peor_categoria_eca"]
+        st.markdown(f"#### 🌿 Clasificación ECA: **{peor_eca}**")
+        
+        if peor_eca == "A1": st.info("🟢 **A1 – Desinfección simple.**")
+        elif peor_eca == "A2": st.warning("🟠 **A2 – Tratamiento convencional.**")
+        elif peor_eca == "A3": st.error("🔴 **A3 – Tratamiento avanzado.**")
+        else: st.error("⚫ **EXCEDE A3 – Requiere tecnologías especiales.**")
 
         with st.expander("Ver clasificación detallada por parámetro"):
-            st.dataframe(pd.DataFrame(detalles_eca))
+            st.dataframe(pd.DataFrame(st.session_state["detalles_eca"]))
