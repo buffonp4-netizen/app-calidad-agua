@@ -33,7 +33,7 @@ def load_water_model():
 modelo_pipeline = load_water_model()
 
 # =========================================================================
-# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1) – CORREGIDO
+# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1)
 # =========================================================================
 NORMATIVA_COMPLETA = {
     # ========== 1. Microbiológicos ==========
@@ -367,11 +367,11 @@ with tab3:
             if incumplimientos_minsa:
                 st.error(f"⚠️ {len(incumplimientos_minsa)} parámetros sobrepasan los límites MINSA:")
                 df_inc = pd.DataFrame(incumplimientos_minsa, columns=['Parámetro', 'Valor Ingresado', 'Límite Normativo'])
-                st.table(df_inc)
+                st.dataframe(df_inc)  # Usamos dataframe para mejor visualización
             else:
                 st.success("✅ Todos los parámetros extra evaluados CUMPLEN con MINSA.")
 
-            # --- EVALUACIÓN ECA (ALGORITMO DE CLASIFICACIÓN) ---
+            # --- EVALUACIÓN ECA ---
             st.markdown("#### 🌿 Clasificación ECA (Categoría 1)")
             peor_cat = "A1"
             detalles_eca = []
@@ -383,7 +383,6 @@ with tab3:
                 cat = None
                 invertido = info.get('invertido', False)
                 
-                # Evaluación secuencial A1 → A2 → A3, tomando la primera categoría que cumple
                 for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
                     lim = info.get(subcat)
                     if lim is None: continue
@@ -392,7 +391,7 @@ with tab3:
                             cat = subcat.replace('eca_', '').upper()
                             break
                     elif invertido:
-                        if valor >= lim:   # Para OD: A1 = 6, A2 = 5, A3 = 4
+                        if valor >= lim:
                             cat = subcat.replace('eca_', '').upper()
                             break
                     else:
@@ -400,28 +399,30 @@ with tab3:
                             cat = subcat.replace('eca_', '').upper()
                             break
                 if cat is None:
-                    cat = "EXCEDE A3"      # No cumple ningún límite
+                    cat = "EXCEDE A3"
 
+                # Obtenemos el límite A3 para mostrarlo (si no existe se muestra N/A)
+                limite_a3 = info.get('eca_a3', 'N/A')
                 detalles_eca.append({
                     'Parámetro': param,
                     'Valor Ingresado': valor,
                     'Categoría Asignada': cat,
-                    'Límite A1': info.get('eca_a1', 'N/A'),
-                    'Límite A2': info.get('eca_a2', 'N/A'),
-                    'Límite A3': info.get('eca_a3', 'N/A')
+                    'Límite ECA (A3)': limite_a3 if limite_a3 is not None else 'N/A'
                 })
                 if orden_eca.get(cat, 0) > orden_eca.get(peor_cat, 0):
                     peor_cat = cat
 
             st.write(f"**Peor nivel detectado en ECA:** `{peor_cat}`")
             
-            # Tabla de parámetros que exceden A3 (con límite A3)
+            # Tabla completa con todos los parámetros y su límite A3
+            df_eca = pd.DataFrame(detalles_eca)
+            df_eca = df_eca[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
+            st.dataframe(df_eca)
+
+            # Destacar los que exceden A3
             excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
             if excedentes:
-                st.error("⚠️ Parámetros que exceden la categoría A3 (agua inadecuada para tratamiento convencional/avanzado):")
+                st.error("⚠️ Parámetros que EXCEDEN la categoría A3 (tratamiento avanzado):")
                 df_exc = pd.DataFrame(excedentes)
-                # Reordenar columnas para mostrar Parámetro, Valor Ingresado, Límite ECA (A3), Categoría Asignada
-                df_exc = df_exc[['Parámetro', 'Valor Ingresado', 'Límite A3', 'Categoría Asignada']]
+                df_exc = df_exc[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
                 st.table(df_exc)
-            else:
-                st.success("Ningún parámetro excede la categoría A3 del ECA.")
