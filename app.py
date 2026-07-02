@@ -23,7 +23,6 @@ st.markdown("""
 # FUNCIÓN AUXILIAR PARA INPUTS CON TOGGLE
 # =========================================================================
 def render_param(label, key, default_val=0.0):
-    """Crea una fila con un Toggle y un Input numérico."""
     col1, col2 = st.columns([1, 4])
     with col1:
         is_active = st.toggle(" ", key=f"tog_{key}", value=False)
@@ -209,7 +208,6 @@ inputs_globales = {}
 
 with tab1:
     st.subheader("Parámetros del Modelo (IA)")
-    # Los 14 parámetros que usa el modelo ML
     campos_ml = {
         'pH': 7.0, 'CE': 0.0, 'T': 20.0, 'OD': 5.0, 'DBO': 0.0,
         'CT': 0.0, 'AyG': 0.0, 'ArT': 0.0, 'PbT': 0.0, 'CuT': 0.0,
@@ -220,9 +218,7 @@ with tab1:
 
 with tab2:
     st.subheader("Parámetros Normativos (MINSA / ECA)")
-    # Agrupar por categorías excluyendo los que ya están en la pestaña 1
     categorias = ["1. Microbiológicos", "2. Organolépticos", "3. Inorgánicos", "4. Orgánicos", "5. Radiactivos"]
-    # Nombres de los parámetros que ya se capturaron en tab1 (mapeo a nombres normativos)
     ya_incluidos = {'pH', 'Conductividad', 'Temperatura', 'Oxígeno Disuelto', 'DBO5',
                     'Coliformes Termotolerantes', 'Aceites y Grasas', 'Arsénico',
                     'Plomo', 'Cobre', 'Manganeso', 'Calcio', 'Magnesio', 'Dureza total'}
@@ -238,11 +234,9 @@ with tab3:
         # 1. PREDICCIÓN IA
         st.markdown("### 🤖 Predicción de IA")
         if modelo_pipeline:
-            # Crear DataFrame con solo las features del modelo
             features_model = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
             df_ia = pd.DataFrame([inputs_globales])[features_model]
-            # Reemplazar NaN (desactivados) por -1 u otro valor manejable; el pipeline debería imputar
-            df_ia = df_ia.fillna(-1)  # ajusta según tu imputador
+            df_ia = df_ia.fillna(-1)  # valor por defecto para NaN
             try:
                 prob = modelo_pipeline.predict_proba(df_ia)[0][1]
                 st.metric("Probabilidad de Potabilidad (IA)", f"{prob*100:.2f}%")
@@ -255,32 +249,82 @@ with tab3:
         else:
             st.info("Modelo no cargado. Verifica la conexión a Hugging Face.")
 
-        # 2. EVALUACIÓN NORMATIVA (MINSA)
+        # 2. EVALUACIÓN NORMATIVA MINSA
         st.markdown("### 🏛️ Evaluación Normativa (MINSA)")
         incumplimientos = []
         for param, valor in inputs_globales.items():
-            if not np.isnan(valor) and param in NORMATIVA_COMPLETA:
-                info = NORMATIVA_COMPLETA[param]
-                minsa_lim = info['minsa']
-                if minsa_lim is None:
-                    continue
-                # Evaluar según tipo
-                if isinstance(minsa_lim, tuple):  # rango
-                    low, high = minsa_lim
-                    if not (low <= valor <= high):
-                        incumplimientos.append((param, valor, f"{low} - {high}"))
-                elif info.get('invertido', False):
-                    if valor < minsa_lim:
-                        incumplimientos.append((param, valor, f">= {minsa_lim}"))
-                else:
-                    if valor > minsa_lim:
-                        incumplimientos.append((param, valor, f"<= {minsa_lim}"))
+            if np.isnan(valor) or param not in NORMATIVA_COMPLETA:
+                continue
+            info = NORMATIVA_COMPLETA[param]
+            minsa_lim = info['minsa']
+            if minsa_lim is None:
+                continue
+            if isinstance(minsa_lim, tuple):
+                low, high = minsa_lim
+                if not (low <= valor <= high):
+                    incumplimientos.append((param, valor, f"{low} - {high}"))
+            elif info.get('invertido', False):
+                if valor < minsa_lim:
+                    incumplimientos.append((param, valor, f">= {minsa_lim}"))
+            else:
+                if valor > minsa_lim:
+                    incumplimientos.append((param, valor, f"<= {minsa_lim}"))
         
         if incumplimientos:
-            st.error(f"⚠️ Se detectaron {len(incumplimientos)} parámetros fuera de norma:")
+            st.error(f"⚠️ {len(incumplimientos)} parámetros fuera de norma:")
             df_inc = pd.DataFrame(incumplimientos, columns=['Parámetro', 'Valor', 'Límite MINSA'])
             st.table(df_inc)
         else:
             st.success("✅ Todos los parámetros activos cumplen con MINSA.")
 
-        # (Opcional) Podrías añadir aquí el diagnóstico ECA igual que en versiones anteriores
+        # 3. DIAGNÓSTICO ECA (Categoría A1, A2, A3, EXCEDE A3)
+        st.markdown("### 🌿 Clasificación ECA (Categoría 1 – Subcategoría A)")
+        peor_categoria_eca = "A1"
+        detalles_eca = []
+        orden = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
+
+        for param, valor in inputs_globales.items():
+            if np.isnan(valor) or param not in NORMATIVA_COMPLETA:
+                continue
+            info = NORMATIVA_COMPLETA[param]
+            # Determinar la categoría para este parámetro
+            cat = None
+            invertido = info.get('invertido', False)
+            # Recorremos A1 -> A2 -> A3, tomando el primer límite que cumpla
+            for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
+                lim = info.get(subcat)
+                if lim is None:
+                    continue
+                if isinstance(lim, tuple):  # rango como en pH
+                    low, high = lim
+                    if low <= valor <= high:
+                        cat = subcat.replace('eca_', '').upper()
+                        break
+                elif invertido:
+                    if valor >= lim:
+                        cat = subcat.replace('eca_', '').upper()
+                        break
+                else:
+                    if valor <= lim:
+                        cat = subcat.replace('eca_', '').upper()
+                        break
+            if cat is None:  # no cumple ningún límite ECA
+                cat = "EXCEDE A3"
+
+            detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría ECA': cat})
+            if orden[cat] > orden[peor_categoria_eca]:
+                peor_categoria_eca = cat
+
+        # Mostrar el plan de tratamiento según la peor categoría
+        st.markdown(f"#### 🔎 Peor nivel detectado: **{peor_categoria_eca}**")
+        if peor_categoria_eca == "A1":
+            st.markdown("""<div class="treatment-box">🟢 <b>Subcategoría A1: Desinfección Simple.</b><br>Requiere cloración estándar u ozonización para eliminar carga microbiológica antes de distribuir.</div>""", unsafe_allow_html=True)
+        elif peor_categoria_eca == "A2":
+            st.markdown("""<div class="treatment-box" style="border-left-color: #FD7E14; background-color: #FFE8D6;">🟠 <b>Subcategoría A2: Tratamiento Convencional.</b><br>Implementar Coagulación, Floculación, Sedimentación, Filtración rápida y Desinfección.</div>""", unsafe_allow_html=True)
+        elif peor_categoria_eca == "A3":
+            st.markdown("""<div class="treatment-box" style="border-left-color: #DC3545; background-color: #F8D7DA;">🔴 <b>Subcategoría A3: Tratamiento Avanzado.</b><br>Contaminación alta. Requiere Ósmosis Inversa, Carbón Activado o Procesos de Oxidación Avanzada.</div>""", unsafe_allow_html=True)
+        else:  # EXCEDE A3
+            st.markdown("""<div class="treatment-box" style="background-color: #343A40; color: #FFF; border-left-color: #000;">⚫ <b>EXCEDE A3: ALERTA CRÍTICA.</b><br>El agua supera la capacidad de las plantas potabilizadoras convencionales. Descarte inmediato para consumo.</div>""", unsafe_allow_html=True)
+
+        with st.expander("Ver detalle de clasificación ECA por parámetro"):
+            st.dataframe(pd.DataFrame(detalles_eca))
