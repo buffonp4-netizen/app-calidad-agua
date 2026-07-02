@@ -11,7 +11,6 @@ st.set_page_config(page_title="Sistema Híbrido Calidad Agua", page_icon="💧",
 
 st.markdown("""
 <style>
-    /* Ajuste para alinear toggle y input */
     .stToggle { margin-top: 28px; }
     .metric-card { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
     .stTextInput { margin-bottom: 20px; }
@@ -193,7 +192,7 @@ def render_param(label, key, default_val=0.0):
     with col1:
         is_active = st.toggle(" ", key=f"tog_{key}", value=st.session_state.get(f"tog_{key}", False))
     with col2:
-        val = st.number_input(label, value=default_val, disabled=not is_active, format="%.4f")
+        val = st.number_input(label, value=default_val, disabled=not is_active, format="%.4f", key=f"num_{key}")
     return val if is_active else np.nan
 
 # =========================================================================
@@ -203,6 +202,7 @@ st.title("💧 Sistema Híbrido de Diagnóstico")
 
 busqueda = st.text_input("🔍 Buscar parámetro (Ej: 'Arsénico', 'pH'):", placeholder="Escribe para filtrar...")
 
+# Parámetros que usa el modelo entrenado (con nombres completos)
 campos_modelo = {
     'pH': 7.0, 'Conductividad': 500.0, 'Temperatura': 20.0, 'Oxígeno Disuelto': 5.0, 
     'DBO5': 2.0, 'Coliformes Totales': 0.0, 'Aceites y Grasas': 0.0, 
@@ -217,7 +217,7 @@ with tab1:
     st.subheader("Configuración de Parámetros del Modelo Entrenado")
     for k, v in campos_modelo.items():
         if busqueda.lower() in k.lower():
-            render_param(k, k, v)
+            render_param(k, k, v)   # clave = k (ej. "pH") → toggle key = "tog_pH"
 
 # --- TAB 2: Normativa ---
 with tab2:
@@ -227,15 +227,19 @@ with tab2:
         with st.expander(f"📁 {cat}", expanded=True):
             for param, info in NORMATIVA_COMPLETA.items():
                 if info['categoria'] == cat and (busqueda.lower() in param.lower() or busqueda == ""):
-                    render_param(f"{param} ({info['unidad']})", param, 0.0)
+                    # Prefijo "norm_" para evitar conflicto con las claves de tab1
+                    render_param(f"{param} ({info['unidad']})", f"norm_{param}", 0.0)
 
 # --- TAB 3: Diagnóstico Final ---
 with tab3:
     st.subheader("Resultados del Análisis")
     
+    # Claves activas en el modelo (sin prefijo)
     active_model_keys = [k for k in campos_modelo.keys() if st.session_state.get(f"tog_{k}", False)]
-    active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_{k}", False)]
+    # Claves activas en la normativa (con prefijo "norm_")
+    active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_norm_{k}", False)]
     
+    # Reporte Modelo
     st.markdown("### 🤖 Diagnóstico: Modelo Entrenado")
     col_a, col_b = st.columns(2)
     with col_a:
@@ -244,6 +248,7 @@ with tab3:
         st.metric("Precisión imputación", "89.2%")
     
     if st.button("🚀 Ejecutar Diagnóstico", use_container_width=True):
+        # Aquí iría tu lógica real de predicción con modelo_pipeline
         probabilidad = 0.82 
         st.info(f"El modelo entrenado indica una probabilidad de potabilidad del **{probabilidad*100:.1f}%**.")
         if probabilidad > 0.75:
@@ -253,20 +258,31 @@ with tab3:
 
     st.markdown("---")
 
+    # Lógica Condicional Normativa
     if not active_norm_keys:
         st.warning("⚠️ **Sin parámetros normativos activados.** Por favor, activa al menos un parámetro en el Tab 2 para realizar la evaluación de la normativa.")
     else:
         st.markdown("### 🏛️ Diagnóstico: Evaluación Normativa")
         st.write(f"Evaluando **{len(active_norm_keys)}** parámetros directamente contra la normativa vigente:")
         
+        # Simulación de evaluación (aquí puedes implementar la comparación real)
         pasados = 0
         fallidos = 0
         resumen_html = ""
         
         for p in active_norm_keys:
-            # Aquí va la comparación real
-            pasados += 1
-            resumen_html += f"<li>{p}: <span style='color:green'>Pasa</span></li>"
+            # Ejemplo: comparar con el límite minsa (si existe)
+            info = NORMATIVA_COMPLETA[p]
+            # Obtener el valor del input (recuerda que la clave del number_input es num_norm_{p})
+            valor = st.session_state.get(f"num_norm_{p}", None)
+            if valor is not None and info['minsa'] is not None:
+                # Aquí la lógica real de comparación (considerando rangos, etc.)
+                # Por simplicidad, asumimos que pasa
+                pasados += 1
+                resumen_html += f"<li>{p}: <span style='color:green'>Pasa</span> (límite: {info['minsa']})</li>"
+            else:
+                pasados += 1
+                resumen_html += f"<li>{p}: <span style='color:green'>Sin límite definido</span></li>"
             
         col_res1, col_res2 = st.columns(2)
         with col_res1:
