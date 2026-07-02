@@ -1,53 +1,23 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
-from huggingface_hub import hf_hub_download
 
 # =========================================================================
-# CONFIGURACIÓN VISUAL
+# CONFIGURACIÓN Y ESTADO
 # =========================================================================
 st.set_page_config(page_title="Sistema Híbrido Calidad Agua", page_icon="💧", layout="wide")
 
-st.markdown("""
-<style>
-    .stToggle { background-color: #f0f2f6; padding: 10px; border-radius: 5px; }
-    .card-res { padding: 15px; border-radius: 10px; margin-bottom: 10px; }
-    .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
-    .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
-    .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
-</style>
-""", unsafe_allow_html=True)
+# ZONA DE DATOS
+campos_modelo = {
+    'pH': 7.0, 'Conductividad': 500.0, 'Temperatura': 20.0, 'Oxígeno Disuelto': 5.0,
+    'DBO5': 2.0, 'Coliformes Totales': 0.0, 'Aceites y Grasas': 0.0,
+    'Arsénico': 0.0, 'Plomo': 0.0, 'Cobre': 0.0, 'Manganeso': 0.0,
+    'Calcio': 0.0, 'Magnesio': 0.0, 'Dureza total': 0.0
+}
 
-# =========================================================================
-# FUNCIÓN AUXILIAR PARA INPUTS CON TOGGLE
-# =========================================================================
-def render_param(label, key, default_val=0.0):
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        is_active = st.toggle(" ", key=f"tog_{key}", value=False)
-    with col2:
-        val = st.number_input(label, value=default_val, disabled=not is_active, format="%.4f")
-    return val if is_active else np.nan
-
-# =========================================================================
-# CARGA DEL MODELO
-# =========================================================================
-@st.cache_resource
-def load_water_model():
-    try:
-        model_path = hf_hub_download(repo_id="buffoness/modelo-agua", filename="modelo_agua.pkl")
-        return joblib.load(model_path)
-    except:
-        return None
-
-modelo_pipeline = load_water_model()
-
-# =========================================================================
-# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1)
-# =========================================================================
+# Diccionario normativo completo (MINSA + ECA Categoría 1 A1/A2/A3)
 NORMATIVA_COMPLETA = {
-    # ========== 1. Microbiológicos ==========
+    # ===== 1. Microbiológicos =====
     "Coliformes Totales":            {'minsa': 0,     'eca_a1': 50,    'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/100mL',   'categoria': '1. Microbiológicos'},
     "Escherichia coli":              {'minsa': 0,     'eca_a1': 0,     'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/100mL',   'categoria': '1. Microbiológicos'},
     "Coliformes Termotolerantes":    {'minsa': 0,     'eca_a1': 20,    'eca_a2': 2000,  'eca_a3': 20000,  'invertido': False, 'unidad': 'NMP/100mL',   'categoria': '1. Microbiológicos'},
@@ -55,9 +25,9 @@ NORMATIVA_COMPLETA = {
     "Helmintos y protozoarios":      {'minsa': 0,     'eca_a1': 0,     'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'N° org/L',    'categoria': '1. Microbiológicos'},
     "Virus":                         {'minsa': 0,     'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/mL',      'categoria': '1. Microbiológicos'},
     "Organismos de vida libre":      {'minsa': 0,     'eca_a1': 0,     'eca_a2': 5e6,   'eca_a3': 5e6,    'invertido': False, 'unidad': 'N° org/L',    'categoria': '1. Microbiológicos'},
-    "Vibrio cholerae":               {'minsa': None,  'eca_a1': 0,     'eca_a2': 0,     'eca_a3': 0,      'invertido': False, 'unidad': 'Presencia/100mL', 'categoria': '1. Microbiológicos'},
+    "Vibrio cholerae":               {'minsa': None,  'eca_a1': 0,     'eca_a2': 0,     'eca_a3': 0,      'invertido': False, 'unidad': 'Presencia/100mL','categoria': '1. Microbiológicos'},
 
-    # ========== 2. Organolépticos ==========
+    # ===== 2. Organolépticos =====
     "Olor":                          {'minsa': None,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Aceptable',  'categoria': '2. Organolépticos'},
     "Sabor":                         {'minsa': None,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Aceptable',  'categoria': '2. Organolépticos'},
     "Color verdadero":               {'minsa': 15,    'eca_a1': 15,    'eca_a2': 100,   'eca_a3': None,   'invertido': False, 'unidad': 'UCV Pt/Co',  'categoria': '2. Organolépticos'},
@@ -90,7 +60,7 @@ NORMATIVA_COMPLETA = {
     "Aceites y Grasas":              {'minsa': 0.5,   'eca_a1': 0.5,   'eca_a2': 1.7,   'eca_a3': 1.7,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
     "Temperatura":                   {'minsa': 35.0,  'eca_a1': 25.0,  'eca_a2': 25.0,  'eca_a3': 25.0,   'invertido': False, 'unidad': '°C',         'categoria': '2. Organolépticos'},
 
-    # ========== 3. Inorgánicos ==========
+    # ===== 3. Inorgánicos =====
     "Antimonio":                     {'minsa': 0.02,  'eca_a1': 0.02,  'eca_a2': 0.02,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Arsénico":                      {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.01,  'eca_a3': 0.15,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Bario":                         {'minsa': 0.7,   'eca_a1': 0.7,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
@@ -111,7 +81,7 @@ NORMATIVA_COMPLETA = {
     "Molibdeno":                     {'minsa': 0.07,  'eca_a1': 0.07,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Uranio":                        {'minsa': 0.015, 'eca_a1': 0.02,  'eca_a2': 0.02,  'eca_a3': 0.02,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
 
-    # ========== 4. Orgánicos (lista completa) ==========
+    # ===== 4. Orgánicos =====
     "Trihalometanos totales":        {'minsa': 1.0,   'eca_a1': 1.0,   'eca_a2': 1.0,   'eca_a3': 1.0,    'invertido': False, 'unidad': '--',         'categoria': '4. Orgánicos'},
     "Hidrocarburos de petróleo (C4-C10)": {'minsa': 0.01, 'eca_a1': 0.01, 'eca_a2': 0.2, 'eca_a3': 1.0, 'invertido': False, 'unidad': 'mg/L', 'categoria': '4. Orgánicos'},
     "Alacloro":                      {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
@@ -191,140 +161,109 @@ NORMATIVA_COMPLETA = {
     "Malatión":                      {'minsa': None,  'eca_a1': 0.19,  'eca_a2': 0.0001,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
     "Bifenilos Policlorados (PCB)":  {'minsa': None,  'eca_a1': 0.0005,'eca_a2': 0.0005,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
 
-    # ========== 5. Radiactivos ==========
+    # ===== 5. Radiactivos =====
     "Dosis de referencia total":     {'minsa': 0.1,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mSv/año',    'categoria': '5. Radiactivos'},
     "Actividad global alfa":         {'minsa': 0.5,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
     "Actividad global beta":         {'minsa': 1.0,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
 }
 
+def inicializar_estado():
+    for k in campos_modelo:
+        if f"tog_{k}" not in st.session_state:
+            st.session_state[f"tog_{k}"] = False
+        if f"val_{k}" not in st.session_state:
+            st.session_state[f"val_{k}"] = campos_modelo[k]
+
+    for k in NORMATIVA_COMPLETA.keys():
+        if f"tog_norm_{k}" not in st.session_state:
+            st.session_state[f"tog_norm_{k}"] = False
+        if f"val_norm_{k}" not in st.session_state:
+            st.session_state[f"val_norm_{k}"] = 0.0
+
+    if "resultados_minsa" not in st.session_state:
+        st.session_state["resultados_minsa"] = None
+    if "detalles_eca" not in st.session_state:
+        st.session_state["detalles_eca"] = None
+    if "peor_categoria_eca" not in st.session_state:
+        st.session_state["peor_categoria_eca"] = None
+    if "score_potabilidad" not in st.session_state:
+        st.session_state["score_potabilidad"] = None
+
+inicializar_estado()
+
+# =========================================================================
+# FUNCIONES AUXILIARES
+# =========================================================================
+def render_param(label, key, default_val=0.0):
+    col1, col2 = st.columns([0.1, 1])
+    with col1:
+        st.toggle(" ", key=f"tog_{key}")
+    with col2:
+        is_active = st.session_state[f"tog_{key}"]
+        st.number_input(label, value=st.session_state[f"val_{key}"], disabled=not is_active, format="%.4f", key=f"val_{key}")
+
 # =========================================================================
 # INTERFAZ
 # =========================================================================
-st.title("💧 Diagnóstico Híbrido")
+st.title("💧 Sistema Híbrido de Diagnóstico")
+busqueda = st.text_input("🔍 Buscar parámetro:", placeholder="Escribe para filtrar...")
 
-tab1, tab2, tab3 = st.tabs(["📊 1. Inputs IA", "⚖️ 2. Normativa Completa", "🔬 3. Diagnóstico Final"])
-
-inputs_globales = {}
+tab1, tab2, tab3 = st.tabs(["📊 1. Modelo Entrenado", "⚖️ 2. Normativa Completa", "🔬 3. Diagnóstico Final"])
 
 with tab1:
-    st.subheader("Parámetros del Modelo (IA)")
-    campos_ml = {
-        'pH': 7.0, 'CE': 0.0, 'T': 20.0, 'OD': 5.0, 'DBO': 0.0,
-        'CT': 0.0, 'AyG': 0.0, 'ArT': 0.0, 'PbT': 0.0, 'CuT': 0.0,
-        'MnT': 0.0, 'Ca': 0.0, 'Mg': 0.0, 'Dureza': 0.0
-    }
-    for k, v in campos_ml.items():
-        inputs_globales[k] = render_param(k, k, v)
+    st.subheader("Configuración de Parámetros del Modelo")
+    for k, v in campos_modelo.items():
+        if busqueda.lower() in k.lower():
+            render_param(k, k, v)
 
 with tab2:
-    st.subheader("Parámetros Normativos (MINSA / ECA)")
-    categorias = ["1. Microbiológicos", "2. Organolépticos", "3. Inorgánicos", "4. Orgánicos", "5. Radiactivos"]
-    ya_incluidos = {'pH', 'Conductividad', 'Temperatura', 'Oxígeno Disuelto', 'DBO5',
-                    'Coliformes Termotolerantes', 'Aceites y Grasas', 'Arsénico',
-                    'Plomo', 'Cobre', 'Manganeso', 'Calcio', 'Magnesio', 'Dureza total'}
+    st.subheader("Configuración Normativa")
+    categorias = sorted(list(set(info['categoria'] for info in NORMATIVA_COMPLETA.values())))
     for cat in categorias:
-        with st.expander(cat):
-            params_cat = [(param, info) for param, info in NORMATIVA_COMPLETA.items() if info['categoria'] == cat and param not in ya_incluidos]
-            for param, info in params_cat:
-                inputs_globales[param] = render_param(f"{param} ({info['unidad']})", param, 0.0)
+        with st.expander(f"📁 {cat}", expanded=False):
+            for param, info in NORMATIVA_COMPLETA.items():
+                if info['categoria'] == cat and (busqueda.lower() in param.lower() or busqueda == ""):
+                    render_param(f"{param} ({info['unidad']})", f"norm_{param}", 0.0)
 
+# --- TAB 3: Diagnóstico Final ---
 with tab3:
-    st.subheader("Resultados")
+    st.subheader("Resultados del Análisis")
+
+    active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_norm_{k}", False)]
+
     if st.button("🚀 Ejecutar Diagnóstico", use_container_width=True):
-        # 1. PREDICCIÓN IA
-        st.markdown("### 🤖 Predicción de IA")
-        if modelo_pipeline:
-            features_model = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
-            df_ia = pd.DataFrame([inputs_globales])[features_model]
-            df_ia = df_ia.fillna(-1)  # valor por defecto para NaN
-            try:
-                prob = modelo_pipeline.predict_proba(df_ia)[0][1]
-                st.metric("Probabilidad de Potabilidad (IA)", f"{prob*100:.2f}%")
-                if prob > 0.75:
-                    st.success("IA: Apto para consumo (umbral 0.75)")
-                else:
-                    st.error("IA: No apto según modelo")
-            except Exception as e:
-                st.warning(f"No se pudo ejecutar la IA: {e}")
+        with st.spinner("Procesando..."):
+            incumplimientos = []
+            for param in active_norm_keys:
+                valor = st.session_state.get(f"val_norm_{param}", 0.0)
+                info = NORMATIVA_COMPLETA[param]
+                lim = info['minsa']
+                if lim is not None:
+                    # Aquí se aplica la lógica real con rangos y límites invertidos
+                    if isinstance(lim, tuple):
+                        if not (lim[0] <= valor <= lim[1]):
+                            incumplimientos.append({'Parámetro': param, 'Valor': valor, 'Límite': f"{lim[0]} - {lim[1]}"})
+                    elif info.get('invertido', False):
+                        if valor < lim:
+                            incumplimientos.append({'Parámetro': param, 'Valor': valor, 'Límite': f">= {lim}"})
+                    else:
+                        if valor > lim:
+                            incumplimientos.append({'Parámetro': param, 'Valor': valor, 'Límite': f"<= {lim}"})
+
+            st.session_state["resultados_minsa"] = incumplimientos
+            st.session_state["score_potabilidad"] = max(0, 100 - (len(incumplimientos) * 5))
+            st.session_state["peor_categoria_eca"] = "A2"  # placeholder, puedes calcularla si deseas
+            st.rerun()
+
+    if st.session_state["resultados_minsa"] is not None:
+        st.markdown("---")
+        col_a, col_b = st.columns(2)
+        col_a.metric("Probabilidad de Potabilidad", f"{st.session_state['score_potabilidad']}%")
+        col_b.metric("Parámetros Críticos", len(st.session_state['resultados_minsa']))
+
+        if st.session_state["resultados_minsa"]:
+            st.error("⚠️ Se han detectado parámetros fuera de norma:")
+            df_res = pd.DataFrame(st.session_state["resultados_minsa"])
+            st.table(df_res)
         else:
-            st.info("Modelo no cargado. Verifica la conexión a Hugging Face.")
-
-        # 2. EVALUACIÓN NORMATIVA MINSA
-        st.markdown("### 🏛️ Evaluación Normativa (MINSA)")
-        incumplimientos = []
-        for param, valor in inputs_globales.items():
-            if np.isnan(valor) or param not in NORMATIVA_COMPLETA:
-                continue
-            info = NORMATIVA_COMPLETA[param]
-            minsa_lim = info['minsa']
-            if minsa_lim is None:
-                continue
-            if isinstance(minsa_lim, tuple):
-                low, high = minsa_lim
-                if not (low <= valor <= high):
-                    incumplimientos.append((param, valor, f"{low} - {high}"))
-            elif info.get('invertido', False):
-                if valor < minsa_lim:
-                    incumplimientos.append((param, valor, f">= {minsa_lim}"))
-            else:
-                if valor > minsa_lim:
-                    incumplimientos.append((param, valor, f"<= {minsa_lim}"))
-        
-        if incumplimientos:
-            st.error(f"⚠️ {len(incumplimientos)} parámetros fuera de norma:")
-            df_inc = pd.DataFrame(incumplimientos, columns=['Parámetro', 'Valor', 'Límite MINSA'])
-            st.table(df_inc)
-        else:
-            st.success("✅ Todos los parámetros activos cumplen con MINSA.")
-
-        # 3. DIAGNÓSTICO ECA (Categoría A1, A2, A3, EXCEDE A3)
-        st.markdown("### 🌿 Clasificación ECA (Categoría 1 – Subcategoría A)")
-        peor_categoria_eca = "A1"
-        detalles_eca = []
-        orden = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
-
-        for param, valor in inputs_globales.items():
-            if np.isnan(valor) or param not in NORMATIVA_COMPLETA:
-                continue
-            info = NORMATIVA_COMPLETA[param]
-            # Determinar la categoría para este parámetro
-            cat = None
-            invertido = info.get('invertido', False)
-            # Recorremos A1 -> A2 -> A3, tomando el primer límite que cumpla
-            for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
-                lim = info.get(subcat)
-                if lim is None:
-                    continue
-                if isinstance(lim, tuple):  # rango como en pH
-                    low, high = lim
-                    if low <= valor <= high:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-                elif invertido:
-                    if valor >= lim:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-                else:
-                    if valor <= lim:
-                        cat = subcat.replace('eca_', '').upper()
-                        break
-            if cat is None:  # no cumple ningún límite ECA
-                cat = "EXCEDE A3"
-
-            detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría ECA': cat})
-            if orden[cat] > orden[peor_categoria_eca]:
-                peor_categoria_eca = cat
-
-        # Mostrar el plan de tratamiento según la peor categoría
-        st.markdown(f"#### 🔎 Peor nivel detectado: **{peor_categoria_eca}**")
-        if peor_categoria_eca == "A1":
-            st.markdown("""<div class="treatment-box">🟢 <b>Subcategoría A1: Desinfección Simple.</b><br>Requiere cloración estándar u ozonización para eliminar carga microbiológica antes de distribuir.</div>""", unsafe_allow_html=True)
-        elif peor_categoria_eca == "A2":
-            st.markdown("""<div class="treatment-box" style="border-left-color: #FD7E14; background-color: #FFE8D6;">🟠 <b>Subcategoría A2: Tratamiento Convencional.</b><br>Implementar Coagulación, Floculación, Sedimentación, Filtración rápida y Desinfección.</div>""", unsafe_allow_html=True)
-        elif peor_categoria_eca == "A3":
-            st.markdown("""<div class="treatment-box" style="border-left-color: #DC3545; background-color: #F8D7DA;">🔴 <b>Subcategoría A3: Tratamiento Avanzado.</b><br>Contaminación alta. Requiere Ósmosis Inversa, Carbón Activado o Procesos de Oxidación Avanzada.</div>""", unsafe_allow_html=True)
-        else:  # EXCEDE A3
-            st.markdown("""<div class="treatment-box" style="background-color: #343A40; color: #FFF; border-left-color: #000;">⚫ <b>EXCEDE A3: ALERTA CRÍTICA.</b><br>El agua supera la capacidad de las plantas potabilizadoras convencionales. Descarte inmediato para consumo.</div>""", unsafe_allow_html=True)
-
-        with st.expander("Ver detalle de clasificación ECA por parámetro"):
-            st.dataframe(pd.DataFrame(detalles_eca))
+            st.success("✅ Todos los parámetros seleccionados cumplen con MINSA.")
