@@ -2,20 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import os
-import gdown
-
-# =========================================================================
-# 1. CONFIGURACIÓN DEL MODELO Y GOOGLE DRIVE (¡PON TU ID AQUÍ!)
-# =========================================================================
-
-# 🛑 INSTRUCCIÓN: Solo debes reemplazar el texto entre las comillas de abajo 
-# por el ID de tu archivo de Google Drive.
-# Ejemplo: si tu enlace es https://drive.google.com/file/d/1ABC123xyz.../view
-# tu ID es: 1ABC123xyz...
-ID_GOOGLE_DRIVE = "1IVhxte4JME6DyFVZ7Dgq9OLMGcc5B21s"
-
-MODEL_PATH = "modelo_agua.pkl"
+from huggingface_hub import hf_hub_download
 
 # =========================================================================
 # CONFIGURACIÓN VISUAL DE LA APP
@@ -34,31 +21,16 @@ st.title("💧 Sistema Híbrido de Diagnóstico de Calidad del Agua")
 st.markdown("### Validación Normativa Multi-nivel (MINSA/ECA) + Inteligencia Artificial")
 
 # =========================================================================
-# 2. FUNCIÓN ANTI-BLOQUEO DE DESCARGA (USANDO GDOWN)
+# 2. FUNCIÓN DE CARGA DEL MODELO DESDE HUGGING FACE
 # =========================================================================
 @st.cache_resource
 def load_water_model():
-    # Si el archivo no existe en el servidor, lo descarga
-    if not os.path.exists(MODEL_PATH):
-        if ID_GOOGLE_DRIVE == "PEGA_AQUI_TU_ID_DE_DRIVE":
-            st.error("⚠️ ALERTA: No has puesto tu ID de Google Drive en el código. El motor de IA está desactivado.")
-            return None
-            
-        with st.spinner("📥 Descargando el modelo desde Google Drive de forma segura (Solo ocurre la primera vez)..."):
-            try:
-                # Gdown se salta el bloqueo de virus automáticamente
-                url = f'https://drive.google.com/uc?id={ID_GOOGLE_DRIVE}'
-                gdown.download(url, MODEL_PATH, quiet=False)
-                st.success("✅ Modelo descargado con éxito.")
-            except Exception as e:
-                st.error(f"Error en la descarga: {e}")
-                return None
-                
-    # Cargar el modelo en memoria
     try:
-        return joblib.load(MODEL_PATH)
+        # Descarga el archivo automáticamente desde tu repo buffoness/modelo-agua
+        model_path = hf_hub_download(repo_id="buffoness/modelo-agua", filename="modelo_agua.pkl")
+        return joblib.load(model_path)
     except Exception as e:
-        st.error(f"Error al leer el archivo .pkl (podría estar corrupto): {e}")
+        st.error(f"Error al cargar el modelo desde Hugging Face: {e}")
         return None
 
 modelo_pipeline = load_water_model()
@@ -69,8 +41,8 @@ modelo_pipeline = load_water_model()
 NORMATIVA_BASE = {
     'pH': {'minsa': (6.5, 8.5), 'eca_a1': (6.5, 8.5), 'eca_a2': (5.5, 9.0), 'eca_a3': (5.5, 9.0)},
     'CE': {'minsa': 1500.0, 'eca_a1': 1500.0, 'eca_a2': 1600.0, 'eca_a3': 2500.0},
-    'T': {'minsa': 35.0, 'eca_a1': 25.0, 'eca_a2': 25.0, 'eca_a3': 25.0}, # T límite referencial
-    'OD': {'minsa': 4.0, 'eca_a1': 6.0, 'eca_a2': 5.0, 'eca_a3': 4.0, 'invertido': True}, # > es mejor
+    'T': {'minsa': 35.0, 'eca_a1': 25.0, 'eca_a2': 25.0, 'eca_a3': 25.0}, 
+    'OD': {'minsa': 4.0, 'eca_a1': 6.0, 'eca_a2': 5.0, 'eca_a3': 4.0, 'invertido': True}, 
     'DBO': {'minsa': 3.0, 'eca_a1': 3.0, 'eca_a2': 5.0, 'eca_a3': 10.0},
     'CT': {'minsa': 0.0, 'eca_a1': 0.0, 'eca_a2': 2000.0, 'eca_a3': 20000.0},
     'AyG': {'minsa': 0.5, 'eca_a1': 0.5, 'eca_a2': 1.0, 'eca_a3': 1.0},
@@ -128,8 +100,6 @@ with tab1:
 
 with tab2:
     st.subheader("Robustecer evaluación con parámetros ECA / MINSA")
-    st.markdown("Estos parámetros **NO** afectan al modelo de IA, pero **SÍ** se evaluarán en el semáforo legal.")
-    
     seleccionados = st.multiselect("Seleccionar extras:", list(PARAMETROS_ADICIONALES_POOL.keys()))
     
     inputs_adicionales = {}
@@ -148,12 +118,10 @@ with tab2:
 with tab3:
     st.subheader("🔍 Resultados e Informe Técnico")
     
-    # --- EVALUACIÓN NORMATIVA ---
     fallas_minsa = []
     eval_dict = {**NORMATIVA_BASE, **{k: PARAMETROS_ADICIONALES_POOL[k] for k in inputs_adicionales}}
     valores_totales = {**inputs, **inputs_adicionales}
     
-    # 1. Chequeo MINSA
     for param, limits in eval_dict.items():
         val = valores_totales[param]
         minsa_lim = limits['minsa']
@@ -166,8 +134,6 @@ with tab3:
             if val > minsa_lim: fallas_minsa.append((param, val, f"Máximo: {minsa_lim}"))
 
     es_potable_minsa = len(fallas_minsa) == 0
-
-    # 2. Chequeo ECA (Si falla MINSA)
     peor_categoria_eca = "A1"
     detalles_eca = []
 
@@ -194,8 +160,7 @@ with tab3:
             if order[cat] > order[peor_categoria_eca]:
                 peor_categoria_eca = cat
 
-    # --- PREDICCIÓN MACHINE LEARNING ---
-    ml_result_text = "Desactivado (Revisa ID de Drive)"
+    ml_result_text = "Desactivado"
     prob_potable = 0.0
     
     if modelo_pipeline is not None:
@@ -203,21 +168,14 @@ with tab3:
         features_vector = pd.DataFrame([[inputs[feat] for feat in features_order]], columns=features_order)
         
         try:
-            # Según tu cuaderno, utilizamos UMBRAL_SEGURIDAD = 0.75
             prob = modelo_pipeline.predict_proba(features_vector)[0]
             prob_potable = prob[1]
             pred = 1 if prob_potable >= 0.75 else 0
-            
-            if pred == 1:
-                ml_result_text = f"Potable (Prob: {prob_potable*100:.1f}%)"
-            else:
-                ml_result_text = f"No Potable (Prob: {prob[0]*100:.1f}%)"
+            ml_result_text = f"Potable (Prob: {prob_potable*100:.1f}%)" if pred == 1 else f"No Potable (Prob: {prob[0]*100:.1f}%)"
         except Exception as e:
             ml_result_text = f"Error IA: {e}"
 
-    # --- RENDERIZADO VISUAL ---
     col_res1, col_res2 = st.columns(2)
-    
     with col_res1:
         st.markdown("#### 🏛️ Evaluación Legal (MINSA)")
         if es_potable_minsa:
@@ -233,11 +191,9 @@ with tab3:
             st.metric(label="Clasificador (Umbral Seguridad 0.75)", value=ml_result_text)
             st.progress(float(prob_potable), text="Probabilidad general de Potabilidad")
 
-    # --- RECOMENDACIÓN ECA ---
     if not es_potable_minsa:
         st.markdown("---")
         st.markdown(f"### 🛠️ Plan de Tratamiento (ECA Categoría 1 - Peor Nivel: {peor_categoria_eca})")
-        
         if peor_categoria_eca == "A1":
             st.markdown("""<div class="treatment-box">🟢 <b>Subcategoría A1: Desinfección Simple.</b><br>Requiere cloración estándar u ozonización para eliminar carga microbiológica antes de distribuir.</div>""", unsafe_allow_html=True)
         elif peor_categoria_eca == "A2":
