@@ -1,63 +1,528 @@
 import streamlit as st
+
+
+
+
+
+
+
 import pandas as pd
+
+
+
+
+
+
+
 import numpy as np
+
+
+
+
+
+
+
 import joblib
+
+
+
+
+
+
+
 import os
+
+
+
+
+
+
+
 import gdown
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =========================================================================
-# 1. CONFIGURACIÓN
+
+
+
+
+
+
+
+# 1. CONFIGURACIÓN DEL MODELO Y GOOGLE DRIVE (¡PON TU ID AQUÍ!)
+
+
+
+
+
+
+
 # =========================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 🛑 INSTRUCCIÓN: Solo debes reemplazar el texto entre las comillas de abajo 
+
+
+
+
+
+
+
+# por el ID de tu archivo de Google Drive.
+
+
+
+
+
+
+
+# Ejemplo: si tu enlace es https://drive.google.com/file/d/1ABC123xyz.../view
+
+
+
+
+
+
+
+# tu ID es: 1ABC123xyz...
+
+
+
+
+
+
+
 ID_GOOGLE_DRIVE = "1IVhxte4JME6DyFVZ7Dgq9OLMGcc5B21s"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 MODEL_PATH = "modelo_agua.pkl"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# =========================================================================
+
+
+
+
+
+
+
+# CONFIGURACIÓN VISUAL DE LA APP
+
+
+
+
+
+
+
+# =========================================================================
+
+
+
+
+
+
 
 st.set_page_config(page_title="Sistema Híbrido - Calidad del Agua", page_icon="💧", layout="wide")
 
-# (Estilos CSS igual que antes...)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 st.markdown("""
+
+
+
+
+
+
+
 <style>
+
+
+
+
+
+
+
     .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
+
+
+
+
+
+
+
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
+
+
+
+
+
+
+
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
+
+
+
+
+
+
+
 </style>
+
+
+
+
+
+
+
 """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 st.title("💧 Sistema Híbrido de Diagnóstico de Calidad del Agua")
 
+
+
+
+
+
+
+st.markdown("### Validación Normativa Multi-nivel (MINSA/ECA) + Inteligencia Artificial")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =========================================================================
-# 2. FUNCIÓN DE CARGA SEGURA
+
+
+
+
+
+
+
+# 2. FUNCIÓN ANTI-BLOQUEO DE DESCARGA (USANDO GDOWN)
+
+
+
+
+
+
+
 # =========================================================================
+
+
+
+
+
+
+
 @st.cache_resource
+
+
+
+
+
+
+
 def load_water_model():
+
+
+
+
+
+
+
+    # Si el archivo no existe en el servidor, lo descarga
+
+
+
+
+
+
+
     if not os.path.exists(MODEL_PATH):
-        if ID_GOOGLE_DRIVE == "1IVhxte4JME6DyFVZ7Dgq9OLMGcc5B21s":
-             # Aquí puedes poner un aviso temporal si no hay ID
-             pass
-        
-        with st.spinner("📥 Descargando modelo..."):
+
+
+
+
+
+
+
+        if ID_GOOGLE_DRIVE == "PEGA_AQUI_TU_ID_DE_DRIVE":
+
+
+
+
+
+
+
+            st.error("⚠️ ALERTA: No has puesto tu ID de Google Drive en el código. El motor de IA está desactivado.")
+
+
+
+
+
+
+
+            return None
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+        with st.spinner("📥 Descargando el modelo desde Google Drive de forma segura (Solo ocurre la primera vez)..."):
+
+
+
+
+
+
+
             try:
+
+
+
+
+
+
+
+                # Gdown se salta el bloqueo de virus automáticamente
+
+
+
+
+
+
+
                 url = f'https://drive.google.com/uc?id={ID_GOOGLE_DRIVE}'
+
+
+
+
+
+
+
                 gdown.download(url, MODEL_PATH, quiet=False)
+
+
+
+
+
+
+
+                st.success("✅ Modelo descargado con éxito.")
+
+
+
+
+
+
+
             except Exception as e:
+
+
+
+
+
+
+
+                st.error(f"Error en la descarga: {e}")
+
+
+
+
+
+
+
                 return None
 
-    # VALIDACIÓN: Verificar si el archivo es real
-    if os.path.exists(MODEL_PATH):
-        # Si el archivo pesa menos de 10KB, es casi seguro que es un HTML de error de Google
-        if os.path.getsize(MODEL_PATH) < 10000:
-            st.error("⚠️ El archivo descargado parece ser una página web (HTML), no el modelo. Revisa que el enlace de Drive sea público.")
-            return None
-            
-        try:
-            return joblib.load(MODEL_PATH)
-        except Exception as e:
-            st.error(f"Error al cargar el archivo .pkl: {e}")
-            return None
-    return None
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+    # Cargar el modelo en memoria
+
+
+
+
+
+
+
+    try:
+
+
+
+
+
+
+
+        return joblib.load(MODEL_PATH)
+
+
+
+
+
+
+
+    except Exception as e:
+
+
+
+
+
+
+
+        st.error(f"Error al leer el archivo .pkl (podría estar corrupto): {e}")
+
+
+
+
+
+
+
+        return None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 modelo_pipeline = load_water_model()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -65,7 +530,15 @@ modelo_pipeline = load_water_model()
 
 
 
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -73,7 +546,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'pH': {'minsa': (6.5, 8.5), 'eca_a1': (6.5, 8.5), 'eca_a2': (5.5, 9.0), 'eca_a3': (5.5, 9.0)},
+
+
+
+
 
 
 
@@ -81,7 +562,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'T': {'minsa': 35.0, 'eca_a1': 25.0, 'eca_a2': 25.0, 'eca_a3': 25.0}, # T límite referencial
+
+
+
+
 
 
 
@@ -89,7 +578,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'DBO': {'minsa': 3.0, 'eca_a1': 3.0, 'eca_a2': 5.0, 'eca_a3': 10.0},
+
+
+
+
 
 
 
@@ -97,7 +594,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'AyG': {'minsa': 0.5, 'eca_a1': 0.5, 'eca_a2': 1.0, 'eca_a3': 1.0},
+
+
+
+
 
 
 
@@ -105,7 +610,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'PbT': {'minsa': 0.01, 'eca_a1': 0.01, 'eca_a2': 0.01, 'eca_a3': 0.05},
+
+
+
+
 
 
 
@@ -113,7 +626,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'MnT': {'minsa': 0.4, 'eca_a1': 0.4, 'eca_a2': 0.4, 'eca_a3': 0.5},
+
+
+
+
 
 
 
@@ -121,7 +642,15 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
     'Mg': {'minsa': 150.0, 'eca_a1': 150.0, 'eca_a2': 150.0, 'eca_a3': 200.0},
+
+
+
+
 
 
 
@@ -129,7 +658,19 @@ NORMATIVA_BASE = {
 
 
 
+
+
+
+
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -141,7 +682,15 @@ PARAMETROS_ADICIONALES_POOL = {
 
 
 
+
+
+
+
     'Cadmio (Total) (mg/L)': {'minsa': 0.003, 'eca_a1': 0.003, 'eca_a2': 0.005, 'eca_a3': 0.005, 'default': 0.001},
+
+
+
+
 
 
 
@@ -149,7 +698,15 @@ PARAMETROS_ADICIONALES_POOL = {
 
 
 
+
+
+
+
     'Hierro (Total) (mg/L)': {'minsa': 0.3, 'eca_a1': 0.3, 'eca_a2': 1.0, 'eca_a3': 5.0, 'default': 0.1},
+
+
+
+
 
 
 
@@ -157,7 +714,15 @@ PARAMETROS_ADICIONALES_POOL = {
 
 
 
+
+
+
+
     'Turbidez (UNT)': {'minsa': 5.0, 'eca_a1': 5.0, 'eca_a2': 100.0, 'eca_a3': 100.0, 'default': 2.0}
+
+
+
+
 
 
 
@@ -169,7 +734,19 @@ PARAMETROS_ADICIONALES_POOL = {
 
 
 
+
+
+
+
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -177,7 +754,15 @@ PARAMETROS_ADICIONALES_POOL = {
 
 
 
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -185,7 +770,15 @@ tab1, tab2, tab3 = st.tabs([
 
 
 
+
+
+
+
     "📊 14 Parámetros Base (ML)", 
+
+
+
+
 
 
 
@@ -193,11 +786,27 @@ tab1, tab2, tab3 = st.tabs([
 
 
 
+
+
+
+
     "🔬 Diagnóstico y Tratamiento"
 
 
 
+
+
+
+
 ])
+
+
+
+
+
+
+
+
 
 
 
@@ -213,7 +822,19 @@ inputs = {}
 
 
 
+
+
+
+
+
+
+
+
 with tab1:
+
+
+
+
 
 
 
@@ -221,7 +842,15 @@ with tab1:
 
 
 
+
+
+
+
     col1, col2, col3 = st.columns(3)
+
+
+
+
 
 
 
@@ -229,7 +858,15 @@ with tab1:
 
 
 
+
+
+
+
     with col1:
+
+
+
+
 
 
 
@@ -237,7 +874,15 @@ with tab1:
 
 
 
+
+
+
+
         inputs['CE'] = st.number_input("Conductividad (µS/cm)", min_value=0.0, value=400.0, step=10.0)
+
+
+
+
 
 
 
@@ -245,7 +890,15 @@ with tab1:
 
 
 
+
+
+
+
         inputs['OD'] = st.number_input("Oxígeno Disuelto (mg/L)", min_value=0.0, value=7.5, step=0.1)
+
+
+
+
 
 
 
@@ -257,7 +910,19 @@ with tab1:
 
 
 
+
+
+
+
+
+
+
+
     with col2:
+
+
+
+
 
 
 
@@ -265,7 +930,15 @@ with tab1:
 
 
 
+
+
+
+
         inputs['AyG'] = st.number_input("Aceites y Grasas (mg/L)", min_value=0.0, value=0.1, step=0.1)
+
+
+
+
 
 
 
@@ -273,7 +946,15 @@ with tab1:
 
 
 
+
+
+
+
         inputs['PbT'] = st.number_input("Plomo Total (mg/L)", min_value=0.0, format="%.5f", value=0.001)
+
+
+
+
 
 
 
@@ -285,7 +966,19 @@ with tab1:
 
 
 
+
+
+
+
+
+
+
+
     with col3:
+
+
+
+
 
 
 
@@ -293,11 +986,23 @@ with tab1:
 
 
 
+
+
+
+
         inputs['Ca'] = st.number_input("Calcio (mg/L)", min_value=0.0, value=45.0, step=1.0)
 
 
 
+
+
+
+
         inputs['Mg'] = st.number_input("Magnesio (mg/L)", min_value=0.0, value=12.0, step=1.0)
+
+
+
+
 
 
 
@@ -309,7 +1014,19 @@ with tab1:
 
 
 
+
+
+
+
+
+
+
+
 with tab2:
+
+
+
+
 
 
 
@@ -317,11 +1034,23 @@ with tab2:
 
 
 
+
+
+
+
     st.markdown("Estos parámetros **NO** afectan al modelo de IA, pero **SÍ** se evaluarán en el semáforo legal.")
 
 
 
+
+
+
+
     
+
+
+
+
 
 
 
@@ -329,7 +1058,15 @@ with tab2:
 
 
 
+
+
+
+
     
+
+
+
+
 
 
 
@@ -337,7 +1074,15 @@ with tab2:
 
 
 
+
+
+
+
     if seleccionados:
+
+
+
+
 
 
 
@@ -345,7 +1090,15 @@ with tab2:
 
 
 
+
+
+
+
         for idx, param in enumerate(seleccionados):
+
+
+
+
 
 
 
@@ -353,7 +1106,15 @@ with tab2:
 
 
 
+
+
+
+
             with target_col:
+
+
+
+
 
 
 
@@ -361,7 +1122,15 @@ with tab2:
 
 
 
+
+
+
+
                     f"{param}", value=PARAMETROS_ADICIONALES_POOL[param]['default'], format="%.4f"
+
+
+
+
 
 
 
@@ -373,7 +1142,19 @@ with tab2:
 
 
 
+
+
+
+
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -381,7 +1162,15 @@ with tab2:
 
 
 
+
+
+
+
 # =========================================================================
+
+
+
+
 
 
 
@@ -389,11 +1178,23 @@ with tab3:
 
 
 
+
+
+
+
     st.subheader("🔍 Resultados e Informe Técnico")
 
 
 
+
+
+
+
     
+
+
+
+
 
 
 
@@ -401,7 +1202,15 @@ with tab3:
 
 
 
+
+
+
+
     fallas_minsa = []
+
+
+
+
 
 
 
@@ -409,7 +1218,15 @@ with tab3:
 
 
 
+
+
+
+
     valores_totales = {**inputs, **inputs_adicionales}
+
+
+
+
 
 
 
@@ -417,7 +1234,15 @@ with tab3:
 
 
 
+
+
+
+
     # 1. Chequeo MINSA
+
+
+
+
 
 
 
@@ -425,7 +1250,15 @@ with tab3:
 
 
 
+
+
+
+
         val = valores_totales[param]
+
+
+
+
 
 
 
@@ -433,7 +1266,15 @@ with tab3:
 
 
 
+
+
+
+
         
+
+
+
+
 
 
 
@@ -441,7 +1282,15 @@ with tab3:
 
 
 
+
+
+
+
             if val < minsa_lim[0] or val > minsa_lim[1]: fallas_minsa.append((param, val, f"Rango: {minsa_lim}"))
+
+
+
+
 
 
 
@@ -449,7 +1298,15 @@ with tab3:
 
 
 
+
+
+
+
             if val < minsa_lim: fallas_minsa.append((param, val, f"Mínimo: {minsa_lim}"))
+
+
+
+
 
 
 
@@ -457,7 +1314,19 @@ with tab3:
 
 
 
+
+
+
+
             if val > minsa_lim: fallas_minsa.append((param, val, f"Máximo: {minsa_lim}"))
+
+
+
+
+
+
+
+
 
 
 
@@ -473,11 +1342,27 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     # 2. Chequeo ECA (Si falla MINSA)
 
 
 
+
+
+
+
     peor_categoria_eca = "A1"
+
+
+
+
 
 
 
@@ -489,7 +1374,19 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     if not es_potable_minsa:
+
+
+
+
 
 
 
@@ -497,7 +1394,15 @@ with tab3:
 
 
 
+
+
+
+
             val = valores_totales[param]
+
+
+
+
 
 
 
@@ -505,7 +1410,15 @@ with tab3:
 
 
 
+
+
+
+
                 if limits['eca_a1'][0] <= val <= limits['eca_a1'][1]: cat = "A1"
+
+
+
+
 
 
 
@@ -513,7 +1426,15 @@ with tab3:
 
 
 
+
+
+
+
                 else: cat = "A3"
+
+
+
+
 
 
 
@@ -521,7 +1442,15 @@ with tab3:
 
 
 
+
+
+
+
                 if val >= limits['eca_a1']: cat = "A1"
+
+
+
+
 
 
 
@@ -529,11 +1458,23 @@ with tab3:
 
 
 
+
+
+
+
                 elif val >= limits['eca_a3']: cat = "A3"
 
 
 
+
+
+
+
                 else: cat = "EXCEDE A3"
+
+
+
+
 
 
 
@@ -541,7 +1482,15 @@ with tab3:
 
 
 
+
+
+
+
                 if val <= limits['eca_a1']: cat = "A1"
+
+
+
+
 
 
 
@@ -549,7 +1498,15 @@ with tab3:
 
 
 
+
+
+
+
                 elif val <= limits['eca_a3']: cat = "A3"
+
+
+
+
 
 
 
@@ -557,7 +1514,15 @@ with tab3:
 
 
 
+
+
+
+
             
+
+
+
+
 
 
 
@@ -565,11 +1530,23 @@ with tab3:
 
 
 
+
+
+
+
             order = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
 
 
 
+
+
+
+
             if order[cat] > order[peor_categoria_eca]:
+
+
+
+
 
 
 
@@ -581,7 +1558,19 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     # --- PREDICCIÓN MACHINE LEARNING ---
+
+
+
+
 
 
 
@@ -589,7 +1578,15 @@ with tab3:
 
 
 
+
+
+
+
     prob_potable = 0.0
+
+
+
+
 
 
 
@@ -597,7 +1594,15 @@ with tab3:
 
 
 
+
+
+
+
     if modelo_pipeline is not None:
+
+
+
+
 
 
 
@@ -605,7 +1610,15 @@ with tab3:
 
 
 
+
+
+
+
         features_vector = pd.DataFrame([[inputs[feat] for feat in features_order]], columns=features_order)
+
+
+
+
 
 
 
@@ -613,7 +1626,15 @@ with tab3:
 
 
 
+
+
+
+
         try:
+
+
+
+
 
 
 
@@ -621,7 +1642,15 @@ with tab3:
 
 
 
+
+
+
+
             prob = modelo_pipeline.predict_proba(features_vector)[0]
+
+
+
+
 
 
 
@@ -629,7 +1658,15 @@ with tab3:
 
 
 
+
+
+
+
             pred = 1 if prob_potable >= 0.75 else 0
+
+
+
+
 
 
 
@@ -637,7 +1674,15 @@ with tab3:
 
 
 
+
+
+
+
             if pred == 1:
+
+
+
+
 
 
 
@@ -645,7 +1690,15 @@ with tab3:
 
 
 
+
+
+
+
             else:
+
+
+
+
 
 
 
@@ -653,7 +1706,15 @@ with tab3:
 
 
 
+
+
+
+
         except Exception as e:
+
+
+
+
 
 
 
@@ -665,7 +1726,19 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     # --- RENDERIZADO VISUAL ---
+
+
+
+
 
 
 
@@ -673,7 +1746,15 @@ with tab3:
 
 
 
+
+
+
+
     
+
+
+
+
 
 
 
@@ -681,7 +1762,15 @@ with tab3:
 
 
 
+
+
+
+
         st.markdown("#### 🏛️ Evaluación Legal (MINSA)")
+
+
+
+
 
 
 
@@ -689,7 +1778,15 @@ with tab3:
 
 
 
+
+
+
+
             st.markdown("""<div class="card-potable"><h4>✅ CUMPLE MINSA</h4><p>Apto para consumo directo.</p></div>""", unsafe_allow_html=True)
+
+
+
+
 
 
 
@@ -697,11 +1794,23 @@ with tab3:
 
 
 
+
+
+
+
             st.markdown(f"""<div class="card-nopotable"><h4>❌ NO CUMPLE MINSA</h4><p>Violación en {len(fallas_minsa)} parámetros.</p></div>""", unsafe_allow_html=True)
 
 
 
+
+
+
+
             with st.expander("Ver variables infractoras"):
+
+
+
+
 
 
 
@@ -713,7 +1822,19 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     with col_res2:
+
+
+
+
 
 
 
@@ -721,11 +1842,23 @@ with tab3:
 
 
 
+
+
+
+
         if modelo_pipeline is not None:
 
 
 
+
+
+
+
             st.metric(label="Clasificador (Umbral Seguridad 0.75)", value=ml_result_text)
+
+
+
+
 
 
 
@@ -737,7 +1870,19 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
     # --- RECOMENDACIÓN ECA ---
+
+
+
+
 
 
 
@@ -745,7 +1890,15 @@ with tab3:
 
 
 
+
+
+
+
         st.markdown("---")
+
+
+
+
 
 
 
@@ -753,7 +1906,15 @@ with tab3:
 
 
 
+
+
+
+
         
+
+
+
+
 
 
 
@@ -761,7 +1922,15 @@ with tab3:
 
 
 
+
+
+
+
             st.markdown("""<div class="treatment-box">🟢 <b>Subcategoría A1: Desinfección Simple.</b><br>Requiere cloración estándar u ozonización para eliminar carga microbiológica antes de distribuir.</div>""", unsafe_allow_html=True)
+
+
+
+
 
 
 
@@ -769,7 +1938,15 @@ with tab3:
 
 
 
+
+
+
+
             st.markdown("""<div class="treatment-box" style="border-left-color: #FD7E14; background-color: #FFE8D6;">🟠 <b>Subcategoría A2: Tratamiento Convencional.</b><br>Implementar Coagulación, Floculación, Sedimentación, Filtración rápida y Desinfección.</div>""", unsafe_allow_html=True)
+
+
+
+
 
 
 
@@ -777,11 +1954,23 @@ with tab3:
 
 
 
+
+
+
+
             st.markdown("""<div class="treatment-box" style="border-left-color: #DC3545; background-color: #F8D7DA;">🔴 <b>Subcategoría A3: Tratamiento Avanzado.</b><br>Contaminación alta. Requiere Ósmosis Inversa, Carbón Activado o Procesos de Oxidación Avanzada.</div>""", unsafe_allow_html=True)
 
 
 
+
+
+
+
         else:
+
+
+
+
 
 
 
@@ -793,8 +1982,21 @@ with tab3:
 
 
 
+
+
+
+
+
+
+
+
         with st.expander("Ver desglose ECA completo"):
 
 
 
+
+
+
+
             st.dataframe(pd.DataFrame(detalles_eca))
+
