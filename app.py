@@ -1,262 +1,61 @@
 import streamlit as st
-
-
-
 import pandas as pd
-
-
-
 import numpy as np
-
-
-
 import joblib
-
-
-
 import os
-
-
-
 import gdown
 
-
-
-
-
-
-
 # =========================================================================
-
-
-
-# 1. CONFIGURACIÓN DEL MODELO Y GOOGLE DRIVE (¡PON TU ID AQUÍ!)
-
-
-
+# 1. CONFIGURACIÓN
 # =========================================================================
-
-
-
-
-
-
-
-# 🛑 INSTRUCCIÓN: Solo debes reemplazar el texto entre las comillas de abajo 
-
-
-
-# por el ID de tu archivo de Google Drive.
-
-
-
-# Ejemplo: si tu enlace es https://drive.google.com/file/d/1ABC123xyz.../view
-
-
-
-# tu ID es: 1ABC123xyz...
-
-
-
 ID_GOOGLE_DRIVE = "1IVhxte4JME6DyFVZ7Dgq9OLMGcc5B21s"
-
-
-
-
-
-
-
 MODEL_PATH = "modelo_agua.pkl"
-
-
-
-
-
-
-
-# =========================================================================
-
-
-
-# CONFIGURACIÓN VISUAL DE LA APP
-
-
-
-# =========================================================================
-
-
 
 st.set_page_config(page_title="Sistema Híbrido - Calidad del Agua", page_icon="💧", layout="wide")
 
-
-
-
-
-
-
+# (Estilos CSS igual que antes...)
 st.markdown("""
-
-
-
 <style>
-
-
-
     .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
-
-
-
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
-
-
-
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
-
-
-
 </style>
-
-
-
 """, unsafe_allow_html=True)
-
-
-
-
-
-
 
 st.title("💧 Sistema Híbrido de Diagnóstico de Calidad del Agua")
 
-
-
-st.markdown("### Validación Normativa Multi-nivel (MINSA/ECA) + Inteligencia Artificial")
-
-
-
-
-
-
-
 # =========================================================================
-
-
-
-# 2. FUNCIÓN ANTI-BLOQUEO DE DESCARGA (USANDO GDOWN)
-
-
-
+# 2. FUNCIÓN DE CARGA SEGURA
 # =========================================================================
-
-
-
 @st.cache_resource
-
-
-
 def load_water_model():
-
-
-
-    # Si el archivo no existe en el servidor, lo descarga
-
-
-
     if not os.path.exists(MODEL_PATH):
-
-
-
-        if ID_GOOGLE_DRIVE == "PEGA_AQUI_TU_ID_DE_DRIVE":
-
-
-
-            st.error("⚠️ ALERTA: No has puesto tu ID de Google Drive en el código. El motor de IA está desactivado.")
-
-
-
-            return None
-
-
-
-            
-
-
-
-        with st.spinner("📥 Descargando el modelo desde Google Drive de forma segura (Solo ocurre la primera vez)..."):
-
-
-
+        if ID_GOOGLE_DRIVE == "1IVhxte4JME6DyFVZ7Dgq9OLMGcc5B21s":
+             # Aquí puedes poner un aviso temporal si no hay ID
+             pass
+        
+        with st.spinner("📥 Descargando modelo..."):
             try:
-
-
-
-                # Gdown se salta el bloqueo de virus automáticamente
-
-
-
                 url = f'https://drive.google.com/uc?id={ID_GOOGLE_DRIVE}'
-
-
-
                 gdown.download(url, MODEL_PATH, quiet=False)
-
-
-
-                st.success("✅ Modelo descargado con éxito.")
-
-
-
             except Exception as e:
-
-
-
-                st.error(f"Error en la descarga: {e}")
-
-
-
                 return None
 
-
-
-                
-
-
-
-    # Cargar el modelo en memoria
-
-
-
-    try:
-
-
-
-        return joblib.load(MODEL_PATH)
-
-
-
-    except Exception as e:
-
-
-
-        st.error(f"Error al leer el archivo .pkl (podría estar corrupto): {e}")
-
-
-
-        return None
-
-
-
-
-
-
+    # VALIDACIÓN: Verificar si el archivo es real
+    if os.path.exists(MODEL_PATH):
+        # Si el archivo pesa menos de 10KB, es casi seguro que es un HTML de error de Google
+        if os.path.getsize(MODEL_PATH) < 10000:
+            st.error("⚠️ El archivo descargado parece ser una página web (HTML), no el modelo. Revisa que el enlace de Drive sea público.")
+            return None
+            
+        try:
+            return joblib.load(MODEL_PATH)
+        except Exception as e:
+            st.error(f"Error al cargar el archivo .pkl: {e}")
+            return None
+    return None
 
 modelo_pipeline = load_water_model()
-
-
-
-
-
-
 
 # =========================================================================
 
