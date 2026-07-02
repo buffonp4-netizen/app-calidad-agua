@@ -9,10 +9,12 @@ from huggingface_hub import hf_hub_download
 # =========================================================================
 st.set_page_config(page_title="Sistema Híbrido Calidad Agua", page_icon="💧", layout="wide")
 
-def inicializar_estado(campos):
+def inicializar_estado(campos, prefijo=""):
     for k in campos:
-        if f"tog_{k}" not in st.session_state:
-            st.session_state[f"tog_{k}"] = False
+        if f"tog_{prefijo}{k}" not in st.session_state:
+            st.session_state[f"tog_{prefijo}{k}"] = False
+        if f"val_{prefijo}{k}" not in st.session_state:
+            st.session_state[f"val_{prefijo}{k}"] = 0.0
 
 # Campos del modelo
 campos_modelo = {
@@ -21,7 +23,7 @@ campos_modelo = {
     'Arsénico': 0.0, 'Plomo': 0.0, 'Cobre': 0.0, 'Manganeso': 0.0, 
     'Calcio': 0.0, 'Magnesio': 0.0, 'Dureza total': 0.0
 }
-inicializar_estado(campos_modelo)
+inicializar_estado(campos_modelo.keys(), prefijo="")
 
 # =========================================================================
 # DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA CATEGORÍA 1)
@@ -176,7 +178,7 @@ NORMATIVA_COMPLETA = {
     "Actividad global alfa":         {'minsa': 0.5,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
     "Actividad global beta":         {'minsa': 1.0,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
 }
-inicializar_estado(NORMATIVA_COMPLETA.keys())
+inicializar_estado(NORMATIVA_COMPLETA.keys(), prefijo="norm_")
 
 # =========================================================================
 # FUNCIONES AUXILIARES
@@ -187,7 +189,8 @@ def render_param(label, key, default_val=0.0):
         st.toggle(" ", key=f"tog_{key}")
     with col2:
         is_active = st.session_state[f"tog_{key}"]
-        st.number_input(label, value=default_val, disabled=not is_active, format="%.4f", key=f"val_{key}")
+        val = st.session_state.get(f"val_{key}", default_val)
+        st.number_input(label, value=val, disabled=not is_active, format="%.4f", key=f"val_{key}")
 
 # =========================================================================
 # INTERFAZ
@@ -226,9 +229,7 @@ with tab2:
 with tab3:
     st.subheader("Resultados del Análisis")
     
-    # Activos del modelo
     active_model_keys = [k for k in campos_modelo.keys() if st.session_state.get(f"tog_{k}", False)]
-    # Activos de la normativa (usando el prefijo norm_)
     active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_norm_{k}", False)]
     
     st.markdown("### 🤖 Diagnóstico: Modelo Entrenado")
@@ -247,15 +248,12 @@ with tab3:
         # --- 1. Cumplimiento MINSA ---
         incumplimientos = []
         for param in active_norm_keys:
-            valor = st.session_state.get(f"val_norm_{param}", None)
-            if valor is None:
-                continue
+            valor = st.session_state.get(f"val_norm_{param}", 0.0)
             info = NORMATIVA_COMPLETA[param]
             minsa_lim = info['minsa']
             if minsa_lim is None:
                 continue
-            # Evaluar según tipo de límite
-            if isinstance(minsa_lim, tuple):  # rango
+            if isinstance(minsa_lim, tuple):
                 low, high = minsa_lim
                 if not (low <= valor <= high):
                     incumplimientos.append((param, valor, f"Rango {low} - {high}"))
@@ -280,18 +278,15 @@ with tab3:
         orden_eca = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
 
         for param in active_norm_keys:
-            valor = st.session_state.get(f"val_norm_{param}", None)
-            if valor is None:
-                continue
+            valor = st.session_state.get(f"val_norm_{param}", 0.0)
             info = NORMATIVA_COMPLETA[param]
-            # Determinar la categoría ECA
             cat = None
             invertido = info.get('invertido', False)
             for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
                 lim = info.get(subcat)
                 if lim is None:
                     continue
-                if isinstance(lim, tuple):  # rango (pH)
+                if isinstance(lim, tuple):
                     low, high = lim
                     if low <= valor <= high:
                         cat = subcat.replace('eca_', '').upper()
@@ -311,7 +306,6 @@ with tab3:
             if orden_eca[cat] > orden_eca[peor_categoria_eca]:
                 peor_categoria_eca = cat
 
-        # Mostrar la peor categoría y la recomendación de tratamiento
         st.markdown(f"**Peor nivel detectado:** `{peor_categoria_eca}`")
         if peor_categoria_eca == "A1":
             st.info("🟢 **A1 – Desinfección simple:** cloración, ozonización. Agua fácilmente potabilizable.")
@@ -319,7 +313,7 @@ with tab3:
             st.warning("🟠 **A2 – Tratamiento convencional:** coagulación, floculación, sedimentación, filtración y desinfección.")
         elif peor_categoria_eca == "A3":
             st.error("🔴 **A3 – Tratamiento avanzado:** ósmosis inversa, carbón activado, oxidación avanzada. Alto costo.")
-        else:  # EXCEDE A3
+        else:
             st.error("⚫ **EXCEDE A3 – No apta para potabilización convencional.** Requiere tecnologías especiales o descarte para consumo humano.")
 
         with st.expander("Ver clasificación detallada por parámetro"):
