@@ -20,16 +20,15 @@ st.markdown("""
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
 
-    /* Alerta de peligro (excede A3) */
+    /* Alerta de peligro (excede A3) - estilizada como los errores de Streamlit */
     .danger-box {
-        padding: 20px;
-        background: linear-gradient(135deg, #F8D7DA 0%, #F5C6CB 100%);
-        border-radius: 10px;
-        border-left: 8px solid #B71C1C;
-        color: #721C24;
+        padding: 1rem;
+        background-color: #fdecea;
+        border-left: 4px solid #ff6b6b;
+        color: #3e2723;
         font-weight: bold;
+        border-radius: 0.5rem;
         margin: 15px 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     /* Centrar tablas y contenido */
