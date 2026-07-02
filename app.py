@@ -302,6 +302,8 @@ with tab2:
     for cat in categorias:
         with st.expander(cat, expanded=False):
             params_cat = [p for p, info in NORMATIVA_COMPLETA.items() if info['categoria'] == cat and p not in ya_incluidos]
+            # Orden alfabético
+            params_cat.sort()
             
             c1, c2 = st.columns(2)
             if c1.button(f"✅ Activar categoría", key=f"act_{cat}"):
@@ -454,18 +456,27 @@ with tab3:
 
             st.write(f"**Peor nivel detectado en ECA:** `{peor_cat}`")
             
-            df_eca = pd.DataFrame(detalles_eca)
-            df_eca = df_eca[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
-            st.dataframe(df_eca)
-
-            excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
-            if excedentes:
+            # --- MENSAJE DE TRATAMIENTO SEGÚN CATEGORÍA ---
+            if peor_cat == "A1":
+                st.success("✅ **Categoría A1:** Aguas que pueden ser potabilizadas con **desinfección** (cloración, ozonización, etc.).")
+            elif peor_cat == "A2":
+                st.warning("⚠️ **Categoría A2:** Aguas que pueden ser potabilizadas con **tratamiento convencional** (coagulación, floculación, decantación, filtración y desinfección).")
+            elif peor_cat == "A3":
+                st.error("🔴 **Categoría A3:** Aguas que pueden ser potabilizadas con **tratamiento avanzado** (convencional + ósmosis inversa, carbón activado, oxidación avanzada).")
+            else:  # EXCEDE A3
                 st.markdown("""
                 <div class="danger-box">
                     ⚠️ <b>ALERTA CRÍTICA:</b> Existen parámetros que superan el límite de la categoría A3 (tratamiento avanzado).<br>
                     Esta agua <b>no es apta</b> para potabilización convencional ni avanzada. Se requiere una fuente alternativa o procesos especializados.
                 </div>
                 """, unsafe_allow_html=True)
+
+            df_eca = pd.DataFrame(detalles_eca)
+            df_eca = df_eca[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
+            st.dataframe(df_eca)
+
+            excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
+            if excedentes:
                 st.error("⚠️ Parámetros que EXCEDEN la categoría A3 (tratamiento avanzado):")
                 df_exc = pd.DataFrame(excedentes)
                 df_exc = df_exc[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
