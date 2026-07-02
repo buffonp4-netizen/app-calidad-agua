@@ -1,401 +1,720 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
-from huggingface_hub import hf_hub_download
+import pickle
 
-# =========================================================================
-# CONFIGURACIÓN VISUAL
-# =========================================================================
-st.set_page_config(page_title="Sistema Híbrido Calidad Agua", page_icon="💧", layout="wide")
+# ==========================================
+# CONFIGURACIÓN DE LA PÁGINA
+# ==========================================
+st.set_page_config(page_title="Evaluación de Calidad de Agua", layout="wide")
 
-st.markdown("""
-<style>
-    .stToggle { background-color: #f0f2f6; padding: 10px; border-radius: 5px; }
-    .card-res { padding: 15px; border-radius: 10px; margin-bottom: 10px; }
-    .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
-    .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
-    .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
-</style>
-""", unsafe_allow_html=True)
-
-# =========================================================================
-# CARGA DEL MODELO
-# =========================================================================
+# ==========================================
+# CARGA DEL MODELO IA
+# ==========================================
 @st.cache_resource
-def load_water_model():
+def load_model():
     try:
-        model_path = hf_hub_download(repo_id="buffoness/modelo-agua", filename="modelo_agua.pkl")
-        return joblib.load(model_path)
-    except:
+        return pickle.load(open('modelo_agua.pkl', 'rb'))
+    except Exception as e:
         return None
 
-modelo_pipeline = load_water_model()
+modelo = load_model()
 
-# =========================================================================
-# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1)
-# =========================================================================
-NORMATIVA_COMPLETA = {
-    # ========== 1. Microbiológicos ==========
-    "Coliformes Totales":            {'minsa': 0,     'eca_a1': 50,    'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/100mL',   'categoria': '1. Microbiológicos'},
-    "Escherichia coli":              {'minsa': 0,     'eca_a1': 0,     'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/100mL',   'categoria': '1. Microbiológicos'},
-    "Coliformes Termotolerantes":    {'minsa': 0,     'eca_a1': 20,    'eca_a2': 2000,  'eca_a3': 20000,  'invertido': False, 'unidad': 'NMP/100mL',   'categoria': '1. Microbiológicos'},
-    "Bacterias Heterotróficas":      {'minsa': 500,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/mL',      'categoria': '1. Microbiológicos'},
-    "Helmintos y protozoarios":      {'minsa': 0,     'eca_a1': 0,     'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'N° org/L',    'categoria': '1. Microbiológicos'},
-    "Virus":                         {'minsa': 0,     'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'UFC/mL',      'categoria': '1. Microbiológicos'},
-    "Organismos de vida libre":      {'minsa': 0,     'eca_a1': 0,     'eca_a2': 5e6,   'eca_a3': 5e6,    'invertido': False, 'unidad': 'N° org/L',    'categoria': '1. Microbiológicos'},
-    "Vibrio cholerae":               {'minsa': None,  'eca_a1': 0,     'eca_a2': 0,     'eca_a3': 0,      'invertido': False, 'unidad': 'Presencia/100mL', 'categoria': '1. Microbiológicos'},
+# ==========================================
+# LISTA COMPLETA DE PARÁMETROS (CON UNIDADES)
+# ==========================================
+# Se incluyen todos los parámetros normativos del MINSA y ECA.
+# Los 14 primeros son los que utiliza el modelo de IA (orden exacto).
+PARAMETROS_NOMBRES = [
+    # --- Parámetros del modelo (14) ---
+    "pH (Potencial de Hidrógeno)",
+    "Turbidez (Unidades Nefelométricas - NTU)",
+    "Conductividad Eléctrica (µS/cm)",
+    "Sólidos Totales Disueltos - TDS (mg/L)",
+    "Temperatura (°C)",
+    "Oxígeno Disuelto (mg/L)",
+    "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)",
+    "Nitratos (mg/L)",
+    "Coliformes Totales (NMP/100 mL)",
+    "Coliformes Termotolerantes (NMP/100 mL)",
+    "Plomo Total (mg/L)",
+    "Arsénico Total (mg/L)",
+    "Hierro Total (mg/L)",
+    "Sulfatos (mg/L)",
 
-    # ========== 2. Organolépticos ==========
-    "Olor":                          {'minsa': None,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Aceptable',  'categoria': '2. Organolépticos'},
-    "Sabor":                         {'minsa': None,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Aceptable',  'categoria': '2. Organolépticos'},
-    "Color verdadero":               {'minsa': 15,    'eca_a1': 15,    'eca_a2': 100,   'eca_a3': None,   'invertido': False, 'unidad': 'UCV Pt/Co',  'categoria': '2. Organolépticos'},
-    "Turbiedad":                     {'minsa': 5,     'eca_a1': 5,     'eca_a2': 10,    'eca_a3': 100,    'invertido': False, 'unidad': 'UNT',        'categoria': '2. Organolépticos'},
-    "pH":                            {'minsa': (6.5, 8.5), 'eca_a1': (6.5, 8.5), 'eca_a2': (5.5, 9.0), 'eca_a3': (5.5, 9.0), 'invertido': False, 'unidad': 'Unidades', 'categoria': '2. Organolépticos'},
-    "Conductividad":                 {'minsa': 1500,  'eca_a1': 1500,  'eca_a2': 1600,  'eca_a3': None,   'invertido': False, 'unidad': 'µS/cm',      'categoria': '2. Organolépticos'},
-    "Sólidos totales disueltos":     {'minsa': 1000,  'eca_a1': 1000,  'eca_a2': 1000,  'eca_a3': 1500,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Cloruros":                      {'minsa': 250,   'eca_a1': 250,   'eca_a2': 250,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Sulfatos":                      {'minsa': 250,   'eca_a1': 250,   'eca_a2': 500,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Dureza total":                  {'minsa': 500,   'eca_a1': 500,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg CaCO3/L', 'categoria': '2. Organolépticos'},
-    "Amoniaco":                      {'minsa': 1.5,   'eca_a1': 1.5,   'eca_a2': 1.5,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Hierro":                        {'minsa': 0.3,   'eca_a1': 0.3,   'eca_a2': 1.0,   'eca_a3': 5.0,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Manganeso":                     {'minsa': 0.4,   'eca_a1': 0.4,   'eca_a2': 0.4,   'eca_a3': 0.5,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Aluminio":                      {'minsa': 0.2,   'eca_a1': 0.9,   'eca_a2': 5.0,   'eca_a3': 5.0,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Cobre":                         {'minsa': 2.0,   'eca_a1': 2.0,   'eca_a2': 2.0,   'eca_a3': 2.0,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Zinc":                          {'minsa': 3.0,   'eca_a1': 3.0,   'eca_a2': 5.0,   'eca_a3': 5.0,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Sodio":                         {'minsa': 200,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Calcio":                        {'minsa': 200,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Magnesio":                      {'minsa': 150,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Oxígeno Disuelto":              {'minsa': 4.0,   'eca_a1': 6.0,   'eca_a2': 5.0,   'eca_a3': 4.0,    'invertido': True,  'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "DBO5":                          {'minsa': 3.0,   'eca_a1': 3.0,   'eca_a2': 5.0,   'eca_a3': 10.0,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "DQO":                           {'minsa': None,  'eca_a1': 10,    'eca_a2': 20,    'eca_a3': 30,     'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Fenoles":                       {'minsa': None,  'eca_a1': 0.003, 'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Fluoruros":                     {'minsa': 1.0,   'eca_a1': 1.5,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Fósforo Total":                 {'minsa': None,  'eca_a1': 0.1,   'eca_a2': 0.15,  'eca_a3': 0.15,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Materiales Flotantes":          {'minsa': None,  'eca_a1': 0,     'eca_a2': 0,     'eca_a3': 0,      'invertido': False, 'unidad': 'Ausencia',   'categoria': '2. Organolépticos'},
-    "Nitratos":                      {'minsa': 50,    'eca_a1': 50,    'eca_a2': 50,    'eca_a3': None,   'invertido': False, 'unidad': 'mg NO3/L',   'categoria': '2. Organolépticos'},
-    "Nitritos (exposición corta)":   {'minsa': 3.0,   'eca_a1': 3.0,   'eca_a2': 3.0,   'eca_a3': None,   'invertido': False, 'unidad': 'mg NO2/L',   'categoria': '2. Organolépticos'},
-    "Nitritos (exposición larga)":   {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg NO2/L',   'categoria': '2. Organolépticos'},
-    "Aceites y Grasas":              {'minsa': 0.5,   'eca_a1': 0.5,   'eca_a2': 1.7,   'eca_a3': 1.7,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Temperatura":                   {'minsa': 35.0,  'eca_a1': 25.0,  'eca_a2': 25.0,  'eca_a3': 25.0,   'invertido': False, 'unidad': '°C',         'categoria': '2. Organolépticos'},
+    # --- Microbiológicos adicionales ---
+    "Escherichia coli (UFC/100mL)",
+    "Bacterias Heterotróficas (UFC/mL)",
+    "Helmintos y protozoarios (N° org/L)",
+    "Virus (UFC/mL)",
+    "Organismos de vida libre (N° org/L)",
+    "Vibrio cholerae (Presencia/100mL)",
 
-    # ========== 3. Inorgánicos ==========
-    "Antimonio":                     {'minsa': 0.02,  'eca_a1': 0.02,  'eca_a2': 0.02,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Arsénico":                      {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.01,  'eca_a3': 0.15,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Bario":                         {'minsa': 0.7,   'eca_a1': 0.7,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Berilio":                       {'minsa': None,  'eca_a1': 0.012, 'eca_a2': 0.04,  'eca_a3': 0.1,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Boro":                          {'minsa': 0.5,   'eca_a1': 2.4,   'eca_a2': 2.4,   'eca_a3': 2.4,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Cadmio":                        {'minsa': 0.003, 'eca_a1': 0.003, 'eca_a2': 0.005, 'eca_a3': 0.01,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Cianuro total":                 {'minsa': 0.07,  'eca_a1': 0.07,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Cianuro libre":                 {'minsa': None,  'eca_a1': None,  'eca_a2': 0.2,   'eca_a3': 0.2,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Cloro residual":                {'minsa': 5.0,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Clorito":                       {'minsa': 0.7,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Clorato":                       {'minsa': 0.7,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Cromo total":                   {'minsa': 0.05,  'eca_a1': 0.05,  'eca_a2': 0.05,  'eca_a3': 0.05,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Flúor":                         {'minsa': 1.0,   'eca_a1': 1.5,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Mercurio":                      {'minsa': 0.001, 'eca_a1': 0.001, 'eca_a2': 0.002, 'eca_a3': 0.002,  'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Níquel":                        {'minsa': 0.02,  'eca_a1': 0.07,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Plomo":                         {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.05,  'eca_a3': 0.05,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Selenio":                       {'minsa': 0.01,  'eca_a1': 0.04,  'eca_a2': 0.04,  'eca_a3': 0.05,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Molibdeno":                     {'minsa': 0.07,  'eca_a1': 0.07,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Uranio":                        {'minsa': 0.015, 'eca_a1': 0.02,  'eca_a2': 0.02,  'eca_a3': 0.02,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
+    # --- Organolépticos adicionales ---
+    "Olor (Aceptable)",
+    "Sabor (Aceptable)",
+    "Color verdadero (UCV Pt/Co)",
+    "Cloruros (mg/L)",
+    "Dureza total (mg CaCO3/L)",
+    "Amoniaco (mg/L)",
+    "Manganeso Total (mg/L)",
+    "Aluminio (mg/L)",
+    "Cobre Total (mg/L)",
+    "Zinc (mg/L)",
+    "Sodio (mg/L)",
+    "Calcio (mg/L)",
+    "Magnesio (mg/L)",
+    "DQO (mg/L)",
+    "Fenoles (mg/L)",
+    "Fluoruros (mg/L)",
+    "Fósforo Total (mg/L)",
+    "Materiales Flotantes (Ausencia)",
+    "Nitritos (exposición corta) (mg NO2/L)",
+    "Nitritos (exposición larga) (mg NO2/L)",
+    "Aceites y Grasas (mg/L)",
 
-    # ========== 4. Orgánicos (lista completa) ==========
-    "Trihalometanos totales":        {'minsa': 1.0,   'eca_a1': 1.0,   'eca_a2': 1.0,   'eca_a3': 1.0,    'invertido': False, 'unidad': '--',         'categoria': '4. Orgánicos'},
-    "Hidrocarburos de petróleo (C4-C10)": {'minsa': 0.01, 'eca_a1': 0.01, 'eca_a2': 0.2, 'eca_a3': 1.0, 'invertido': False, 'unidad': 'mg/L', 'categoria': '4. Orgánicos'},
-    "Alacloro":                      {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Aldicarb":                      {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.01,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Aldrín + Dieldrín":             {'minsa': 0.0003,'eca_a1': 0.00003,'eca_a2': 0.00003,'eca_a3': None, 'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Benceno":                       {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.01,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Clordano (total isómeros)":     {'minsa': 0.0002,'eca_a1': 0.0002,'eca_a2': 0.0002,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "DDT (total isómeros)":          {'minsa': 0.001, 'eca_a1': 0.001, 'eca_a2': 0.001, 'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Endrin":                        {'minsa': 0.0006,'eca_a1': 0.0006,'eca_a2': 0.0006,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Lindano (Gamma HCH)":           {'minsa': 0.002, 'eca_a1': 0.002, 'eca_a2': 0.002, 'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Hexaclorobenceno":              {'minsa': 0.001, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Heptacloro + Heptacloroepóxido":{'minsa': 0.00003,'eca_a1':0.00003,'eca_a2':0.00003,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Metoxiclor":                    {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Pentaclorofenol":               {'minsa': 0.009, 'eca_a1': 0.009, 'eca_a2': 0.009, 'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "2,4-D":                         {'minsa': 0.03,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Acrilamida":                    {'minsa': 0.0005,'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Epiclorhidrina":                {'minsa': 0.0004,'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Cloruro de vinilo":             {'minsa': 0.0003,'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Benzo(a)pireno":                {'minsa': 0.0007,'eca_a1': 0.0007,'eca_a2': 0.0007,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Dicloroetano":              {'minsa': 0.03,  'eca_a1': 0.03,  'eca_a2': 0.03,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Tetracloroeteno":               {'minsa': 0.04,  'eca_a1': 0.04,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Monocloramina":                 {'minsa': 3.0,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Tricloroeteno":                 {'minsa': 0.07,  'eca_a1': 0.07,  'eca_a2': 0.07,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Tetracloruro de carbono":       {'minsa': 0.004, 'eca_a1': 0.004, 'eca_a2': 0.004, 'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Ftalato de di(2-etilhexilo)":   {'minsa': 0.008, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Diclorobenceno":            {'minsa': 1.0,   'eca_a1': 1.0,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,4-Diclorobenceno":            {'minsa': 0.3,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,1-Dicloroeteno":              {'minsa': 0.03,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Dicloroeteno":              {'minsa': 0.05,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Diclorometano":                 {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Ácido edético (EDTA)":          {'minsa': 0.6,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Etilbenceno":                   {'minsa': 0.3,   'eca_a1': 0.3,   'eca_a2': 0.3,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Hexaclorobutadieno":            {'minsa': 0.0006,'eca_a1': 0.0006,'eca_a2': 0.0006,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Ácido Nitrilotriacético":       {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Estireno":                      {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Tolueno":                       {'minsa': 0.7,   'eca_a1': 0.7,   'eca_a2': 0.7,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Xileno":                        {'minsa': 0.5,   'eca_a1': 0.5,   'eca_a2': 0.5,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Atrazina":                      {'minsa': 0.002, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Carbofurano":                   {'minsa': 0.007, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Clorotoluron":                  {'minsa': 0.03,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Cianazina":                     {'minsa': 0.0006,'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "2,4-DB":                        {'minsa': 0.09,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Dibromo-3-Cloropropano":    {'minsa': 0.001, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Dibromoetano":              {'minsa': 0.0004,'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,2-Dicloropropano":            {'minsa': 0.04,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "1,3-Dicloropropeno":            {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dicloroprop":                   {'minsa': 0.1,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dimetato":                      {'minsa': 0.006, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Fenoprop":                      {'minsa': 0.009, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Isoproturon":                   {'minsa': 0.009, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "MCPA":                          {'minsa': 0.002, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Mecoprop":                      {'minsa': 0.01,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Metolacloro":                   {'minsa': 0.01,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Molinato":                      {'minsa': 0.006, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Pendimetalina":                 {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Simazina":                      {'minsa': 0.002, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "2,4,5-T":                       {'minsa': 0.009, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Terbutilazina":                 {'minsa': 0.007, 'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Trifluralina":                  {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Cloropirifos":                  {'minsa': 0.03,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Piriproxifeno":                 {'minsa': 0.3,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Microcistin-LR":                {'minsa': 0.001, 'eca_a1': 0.001, 'eca_a2': 0.001, 'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Bromato":                       {'minsa': 0.01,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Bromodiclorometano":            {'minsa': 0.06,  'eca_a1': 0.06,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Bromoformo":                    {'minsa': 0.1,   'eca_a1': 0.1,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Hidrato de cloral":             {'minsa': 0.01,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Cloroformo":                    {'minsa': 0.2,   'eca_a1': 0.3,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Cloruro de cianógeno":          {'minsa': 0.07,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dibromoacetonitrilo":           {'minsa': 0.1,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dibromoclorometano":            {'minsa': 0.05,  'eca_a1': 0.1,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dicloroacetato":                {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Dicloroacetonitrilo":           {'minsa': 0.9,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Formaldehído":                  {'minsa': 0.02,  'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Monocloroacetato":              {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Tricloroacetato":               {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "2,4,6-Triclorofenol":           {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Malatión":                      {'minsa': None,  'eca_a1': 0.19,  'eca_a2': 0.0001,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
-    "Bifenilos Policlorados (PCB)":  {'minsa': None,  'eca_a1': 0.0005,'eca_a2': 0.0005,'eca_a3': None,  'invertido': False, 'unidad': 'mg/L',       'categoria': '4. Orgánicos'},
+    # --- Inorgánicos ---
+    "Antimonio (mg/L)",
+    "Bario (mg/L)",
+    "Berilio (mg/L)",
+    "Boro (mg/L)",
+    "Cadmio Total (mg/L)",
+    "Cianuro total (mg/L)",
+    "Cianuro libre (mg/L)",
+    "Cloro residual (mg/L)",
+    "Clorito (mg/L)",
+    "Clorato (mg/L)",
+    "Cromo total (mg/L)",
+    "Flúor (mg/L)",
+    "Mercurio Total (mg/L)",
+    "Níquel (mg/L)",
+    "Selenio (mg/L)",
+    "Molibdeno (mg/L)",
+    "Uranio (mg/L)",
 
-    # ========== 5. Radiactivos ==========
-    "Dosis de referencia total":     {'minsa': 0.1,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mSv/año',    'categoria': '5. Radiactivos'},
-    "Actividad global alfa":         {'minsa': 0.5,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
-    "Actividad global beta":         {'minsa': 1.0,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'Bq/L',       'categoria': '5. Radiactivos'},
+    # --- Orgánicos (lista completa) ---
+    "Trihalometanos totales (--)" ,
+    "Hidrocarburos de petróleo (C4-C10) (mg/L)",
+    "Alacloro (mg/L)",
+    "Aldicarb (mg/L)",
+    "Aldrín + Dieldrín (mg/L)",
+    "Benceno (mg/L)",
+    "Clordano (total isómeros) (mg/L)",
+    "DDT (total isómeros) (mg/L)",
+    "Endrin (mg/L)",
+    "Lindano (Gamma HCH) (mg/L)",
+    "Hexaclorobenceno (mg/L)",
+    "Heptacloro + Heptacloroepóxido (mg/L)",
+    "Metoxiclor (mg/L)",
+    "Pentaclorofenol (mg/L)",
+    "2,4-D (mg/L)",
+    "Acrilamida (mg/L)",
+    "Epiclorhidrina (mg/L)",
+    "Cloruro de vinilo (mg/L)",
+    "Benzo(a)pireno (mg/L)",
+    "1,2-Dicloroetano (mg/L)",
+    "Tetracloroeteno (mg/L)",
+    "Monocloramina (mg/L)",
+    "Tricloroeteno (mg/L)",
+    "Tetracloruro de carbono (mg/L)",
+    "Ftalato de di(2-etilhexilo) (mg/L)",
+    "1,2-Diclorobenceno (mg/L)",
+    "1,4-Diclorobenceno (mg/L)",
+    "1,1-Dicloroeteno (mg/L)",
+    "1,2-Dicloroeteno (mg/L)",
+    "Diclorometano (mg/L)",
+    "Ácido edético (EDTA) (mg/L)",
+    "Etilbenceno (mg/L)",
+    "Hexaclorobutadieno (mg/L)",
+    "Ácido Nitrilotriacético (mg/L)",
+    "Estireno (mg/L)",
+    "Tolueno (mg/L)",
+    "Xileno (mg/L)",
+    "Atrazina (mg/L)",
+    "Carbofurano (mg/L)",
+    "Clorotoluron (mg/L)",
+    "Cianazina (mg/L)",
+    "2,4-DB (mg/L)",
+    "1,2-Dibromo-3-Cloropropano (mg/L)",
+    "1,2-Dibromoetano (mg/L)",
+    "1,2-Dicloropropano (mg/L)",
+    "1,3-Dicloropropeno (mg/L)",
+    "Dicloroprop (mg/L)",
+    "Dimetato (mg/L)",
+    "Fenoprop (mg/L)",
+    "Isoproturon (mg/L)",
+    "MCPA (mg/L)",
+    "Mecoprop (mg/L)",
+    "Metolacloro (mg/L)",
+    "Molinato (mg/L)",
+    "Pendimetalina (mg/L)",
+    "Simazina (mg/L)",
+    "2,4,5-T (mg/L)",
+    "Terbutilazina (mg/L)",
+    "Trifluralina (mg/L)",
+    "Cloropirifos (mg/L)",
+    "Piriproxifeno (mg/L)",
+    "Microcistin-LR (mg/L)",
+    "Bromato (mg/L)",
+    "Bromodiclorometano (mg/L)",
+    "Bromoformo (mg/L)",
+    "Hidrato de cloral (mg/L)",
+    "Cloroformo (mg/L)",
+    "Cloruro de cianógeno (mg/L)",
+    "Dibromoacetonitrilo (mg/L)",
+    "Dibromoclorometano (mg/L)",
+    "Dicloroacetato (mg/L)",
+    "Dicloroacetonitrilo (mg/L)",
+    "Formaldehído (mg/L)",
+    "Monocloroacetato (mg/L)",
+    "Tricloroacetato (mg/L)",
+    "2,4,6-Triclorofenol (mg/L)",
+    "Malatión (mg/L)",
+    "Bifenilos Policlorados (PCB) (mg/L)",
+
+    # --- Radiactivos ---
+    "Dosis de referencia total (mSv/año)",
+    "Actividad global alfa (Bq/L)",
+    "Actividad global beta (Bq/L)"
+]
+
+# ==========================================
+# LÍMITES MINSA (DS N° 031-2010-SA)
+# ==========================================
+limites_minsa = {
+    # Modelo
+    "pH (Potencial de Hidrógeno)": (6.5, 8.5),
+    "Turbidez (Unidades Nefelométricas - NTU)": 5.0,
+    "Conductividad Eléctrica (µS/cm)": 1500.0,
+    "Sólidos Totales Disueltos - TDS (mg/L)": 1000.0,
+    "Temperatura (°C)": 35.0,
+    "Oxígeno Disuelto (mg/L)": None,  # Mínimo 4.0 se evalúa como invertido
+    "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)": 3.0,
+    "Nitratos (mg/L)": 50.0,
+    "Coliformes Totales (NMP/100 mL)": 0.0,
+    "Coliformes Termotolerantes (NMP/100 mL)": 0.0,
+    "Plomo Total (mg/L)": 0.01,
+    "Arsénico Total (mg/L)": 0.01,
+    "Hierro Total (mg/L)": 0.3,
+    "Sulfatos (mg/L)": 250.0,
+
+    # Microbiológicos adicionales
+    "Escherichia coli (UFC/100mL)": 0.0,
+    "Bacterias Heterotróficas (UFC/mL)": 500.0,
+    "Helmintos y protozoarios (N° org/L)": 0.0,
+    "Virus (UFC/mL)": 0.0,
+    "Organismos de vida libre (N° org/L)": 0.0,
+    "Vibrio cholerae (Presencia/100mL)": None,  # Cualitativo
+
+    # Organolépticos adicionales
+    "Olor (Aceptable)": None,
+    "Sabor (Aceptable)": None,
+    "Color verdadero (UCV Pt/Co)": 15.0,
+    "Cloruros (mg/L)": 250.0,
+    "Dureza total (mg CaCO3/L)": 500.0,
+    "Amoniaco (mg/L)": 1.5,
+    "Manganeso Total (mg/L)": 0.4,
+    "Aluminio (mg/L)": 0.2,
+    "Cobre Total (mg/L)": 2.0,
+    "Zinc (mg/L)": 3.0,
+    "Sodio (mg/L)": 200.0,
+    "Calcio (mg/L)": 200.0,
+    "Magnesio (mg/L)": 150.0,
+    "DQO (mg/L)": None,
+    "Fenoles (mg/L)": None,
+    "Fluoruros (mg/L)": 1.0,
+    "Fósforo Total (mg/L)": None,
+    "Materiales Flotantes (Ausencia)": None,
+    "Nitritos (exposición corta) (mg NO2/L)": 3.0,
+    "Nitritos (exposición larga) (mg NO2/L)": 0.2,
+    "Aceites y Grasas (mg/L)": 0.5,
+
+    # Inorgánicos
+    "Antimonio (mg/L)": 0.02,
+    "Bario (mg/L)": 0.7,
+    "Berilio (mg/L)": None,
+    "Boro (mg/L)": 0.5,
+    "Cadmio Total (mg/L)": 0.003,
+    "Cianuro total (mg/L)": 0.07,
+    "Cianuro libre (mg/L)": None,
+    "Cloro residual (mg/L)": 5.0,
+    "Clorito (mg/L)": 0.7,
+    "Clorato (mg/L)": 0.7,
+    "Cromo total (mg/L)": 0.05,
+    "Flúor (mg/L)": 1.0,
+    "Mercurio Total (mg/L)": 0.001,
+    "Níquel (mg/L)": 0.02,
+    "Selenio (mg/L)": 0.01,
+    "Molibdeno (mg/L)": 0.07,
+    "Uranio (mg/L)": 0.015,
+
+    # Orgánicos (solo los que tienen LMP definido en MINSA)
+    "Trihalometanos totales (--)": 1.0,
+    "Hidrocarburos de petróleo (C4-C10) (mg/L)": 0.01,
+    "Alacloro (mg/L)": 0.02,
+    "Aldicarb (mg/L)": 0.01,
+    "Aldrín + Dieldrín (mg/L)": 0.0003,
+    "Benceno (mg/L)": 0.01,
+    "Clordano (total isómeros) (mg/L)": 0.0002,
+    "DDT (total isómeros) (mg/L)": 0.001,
+    "Endrin (mg/L)": 0.0006,
+    "Lindano (Gamma HCH) (mg/L)": 0.002,
+    "Hexaclorobenceno (mg/L)": 0.001,
+    "Heptacloro + Heptacloroepóxido (mg/L)": 0.00003,
+    "Metoxiclor (mg/L)": 0.02,
+    "Pentaclorofenol (mg/L)": 0.009,
+    "2,4-D (mg/L)": 0.03,
+    "Acrilamida (mg/L)": 0.0005,
+    "Epiclorhidrina (mg/L)": 0.0004,
+    "Cloruro de vinilo (mg/L)": 0.0003,
+    "Benzo(a)pireno (mg/L)": 0.0007,
+    "1,2-Dicloroetano (mg/L)": 0.03,
+    "Tetracloroeteno (mg/L)": 0.04,
+    "Monocloramina (mg/L)": 3.0,
+    "Tricloroeteno (mg/L)": 0.07,
+    "Tetracloruro de carbono (mg/L)": 0.004,
+    "Ftalato de di(2-etilhexilo) (mg/L)": 0.008,
+    "1,2-Diclorobenceno (mg/L)": 1.0,
+    "1,4-Diclorobenceno (mg/L)": 0.3,
+    "1,1-Dicloroeteno (mg/L)": 0.03,
+    "1,2-Dicloroeteno (mg/L)": 0.05,
+    "Diclorometano (mg/L)": 0.02,
+    "Ácido edético (EDTA) (mg/L)": 0.6,
+    "Etilbenceno (mg/L)": 0.3,
+    "Hexaclorobutadieno (mg/L)": 0.0006,
+    "Ácido Nitrilotriacético (mg/L)": 0.2,
+    "Estireno (mg/L)": 0.02,
+    "Tolueno (mg/L)": 0.7,
+    "Xileno (mg/L)": 0.5,
+    "Atrazina (mg/L)": 0.002,
+    "Carbofurano (mg/L)": 0.007,
+    "Clorotoluron (mg/L)": 0.03,
+    "Cianazina (mg/L)": 0.0006,
+    "2,4-DB (mg/L)": 0.09,
+    "1,2-Dibromo-3-Cloropropano (mg/L)": 0.001,
+    "1,2-Dibromoetano (mg/L)": 0.0004,
+    "1,2-Dicloropropano (mg/L)": 0.04,
+    "1,3-Dicloropropeno (mg/L)": 0.02,
+    "Dicloroprop (mg/L)": 0.1,
+    "Dimetato (mg/L)": 0.006,
+    "Fenoprop (mg/L)": 0.009,
+    "Isoproturon (mg/L)": 0.009,
+    "MCPA (mg/L)": 0.002,
+    "Mecoprop (mg/L)": 0.01,
+    "Metolacloro (mg/L)": 0.01,
+    "Molinato (mg/L)": 0.006,
+    "Pendimetalina (mg/L)": 0.02,
+    "Simazina (mg/L)": 0.002,
+    "2,4,5-T (mg/L)": 0.009,
+    "Terbutilazina (mg/L)": 0.007,
+    "Trifluralina (mg/L)": 0.02,
+    "Cloropirifos (mg/L)": 0.03,
+    "Piriproxifeno (mg/L)": 0.3,
+    "Microcistin-LR (mg/L)": 0.001,
+    "Bromato (mg/L)": 0.01,
+    "Bromodiclorometano (mg/L)": 0.06,
+    "Bromoformo (mg/L)": 0.1,
+    "Hidrato de cloral (mg/L)": 0.01,
+    "Cloroformo (mg/L)": 0.2,
+    "Cloruro de cianógeno (mg/L)": 0.07,
+    "Dibromoacetonitrilo (mg/L)": 0.1,
+    "Dibromoclorometano (mg/L)": 0.05,
+    "Dicloroacetato (mg/L)": 0.02,
+    "Dicloroacetonitrilo (mg/L)": 0.9,
+    "Formaldehído (mg/L)": 0.02,
+    "Monocloroacetato (mg/L)": 0.2,
+    "Tricloroacetato (mg/L)": 0.2,
+    "2,4,6-Triclorofenol (mg/L)": 0.2,
+    "Malatión (mg/L)": None,
+    "Bifenilos Policlorados (PCB) (mg/L)": None,
+
+    # Radiactivos
+    "Dosis de referencia total (mSv/año)": 0.1,
+    "Actividad global alfa (Bq/L)": 0.5,
+    "Actividad global beta (Bq/L)": 1.0
 }
 
-# =========================================================================
-# GESTIÓN DE ESTADO (SESSION STATE)
-# =========================================================================
-campos_ml = {
-    'pH': 7.0, 'CE': 0.0, 'T': 20.0, 'OD': 5.0, 'DBO': 0.0,
-    'CT': 0.0, 'AyG': 0.0, 'ArT': 0.0, 'PbT': 0.0, 'CuT': 0.0,
-    'MnT': 0.0, 'Ca': 0.0, 'Mg': 0.0, 'Dureza': 0.0
+# ==========================================
+# PARÁMETROS CON LÍMITE MÍNIMO (INVERTIDO) – MINSA
+# ==========================================
+INVERTIDOS_MINSA = {"Oxígeno Disuelto (mg/L)"}
+
+# ==========================================
+# LÍMITES ECA CATEGORÍA 1 (A1, A2, A3)
+# ==========================================
+limites_eca = {
+    "A1": {},
+    "A2": {},
+    "A3": {}
 }
 
-def inicializar_estado():
-    for k in campos_ml:
-        if f"tog_{k}" not in st.session_state:
-            st.session_state[f"tog_{k}"] = False
-        if f"val_{k}" not in st.session_state:
-            st.session_state[f"val_{k}"] = campos_ml[k]
+# ----- A1 -----
+limites_eca["A1"] = {
+    "pH (Potencial de Hidrógeno)": (6.5, 8.5),
+    "Turbidez (Unidades Nefelométricas - NTU)": 5.0,
+    "Conductividad Eléctrica (µS/cm)": 1500.0,
+    "Sólidos Totales Disueltos - TDS (mg/L)": 1000.0,
+    "Temperatura (°C)": 25.0,  # Δ3 respecto al promedio, se usa 25°C como referencia
+    "Oxígeno Disuelto (mg/L)": 6.0,   # mínimo
+    "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)": 3.0,
+    "Nitratos (mg/L)": 50.0,
+    "Coliformes Totales (NMP/100 mL)": 50.0,
+    "Coliformes Termotolerantes (NMP/100 mL)": 20.0,
+    "Plomo Total (mg/L)": 0.01,
+    "Arsénico Total (mg/L)": 0.01,
+    "Hierro Total (mg/L)": 0.3,
+    "Sulfatos (mg/L)": 250.0,
+    # adicionales
+    "Escherichia coli (UFC/100mL)": 0.0,
+    "Helmintos y protozoarios (N° org/L)": 0.0,
+    "Vibrio cholerae (Presencia/100mL)": 0.0,
+    "Organismos de vida libre (N° org/L)": 0.0,
+    "Color verdadero (UCV Pt/Co)": 15.0,
+    "Cloruros (mg/L)": 250.0,
+    "Dureza total (mg CaCO3/L)": 500.0,
+    "Amoniaco (mg/L)": 1.5,
+    "Manganeso Total (mg/L)": 0.4,
+    "Aluminio (mg/L)": 0.9,
+    "Cobre Total (mg/L)": 2.0,
+    "Zinc (mg/L)": 3.0,
+    "Sodio (mg/L)": None,
+    "Calcio (mg/L)": None,
+    "Magnesio (mg/L)": None,
+    "DQO (mg/L)": 10.0,
+    "Fenoles (mg/L)": 0.003,
+    "Fluoruros (mg/L)": 1.5,
+    "Fósforo Total (mg/L)": 0.1,
+    "Materiales Flotantes (Ausencia)": 0.0,
+    "Nitritos (exposición corta) (mg NO2/L)": 3.0,
+    "Aceites y Grasas (mg/L)": 0.5,
+    "Antimonio (mg/L)": 0.02,
+    "Arsénico Total (mg/L)": 0.01,
+    "Bario (mg/L)": 0.7,
+    "Berilio (mg/L)": 0.012,
+    "Boro (mg/L)": 2.4,
+    "Cadmio Total (mg/L)": 0.003,
+    "Cianuro total (mg/L)": 0.07,
+    "Cianuro libre (mg/L)": None,
+    "Cloro residual (mg/L)": None,
+    "Clorito (mg/L)": None,
+    "Clorato (mg/L)": None,
+    "Cromo total (mg/L)": 0.05,
+    "Flúor (mg/L)": 1.5,
+    "Mercurio Total (mg/L)": 0.001,
+    "Níquel (mg/L)": 0.07,
+    "Selenio (mg/L)": 0.04,
+    "Molibdeno (mg/L)": 0.07,
+    "Uranio (mg/L)": 0.02,
+    # orgánicos A1
+    "Trihalometanos totales (--)": 1.0,
+    "Hidrocarburos de petróleo (C4-C10) (mg/L)": 0.01,
+    "Aldicarb (mg/L)": 0.01,
+    "Aldrín + Dieldrín (mg/L)": 0.00003,
+    "Benceno (mg/L)": 0.01,
+    "Clordano (total isómeros) (mg/L)": 0.0002,
+    "DDT (total isómeros) (mg/L)": 0.001,
+    "Endrin (mg/L)": 0.0006,
+    "Lindano (Gamma HCH) (mg/L)": 0.002,
+    "Heptacloro + Heptacloroepóxido (mg/L)": 0.00003,
+    "Pentaclorofenol (mg/L)": 0.009,
+    "Benzo(a)pireno (mg/L)": 0.0007,
+    "1,2-Dicloroetano (mg/L)": 0.03,
+    "Tetracloroeteno (mg/L)": 0.04,
+    "Tricloroeteno (mg/L)": 0.07,
+    "Tetracloruro de carbono (mg/L)": 0.004,
+    "Etilbenceno (mg/L)": 0.3,
+    "Hexaclorobutadieno (mg/L)": 0.0006,
+    "Tolueno (mg/L)": 0.7,
+    "Xileno (mg/L)": 0.5,
+    "Microcistin-LR (mg/L)": 0.001,
+    "Bromodiclorometano (mg/L)": 0.06,
+    "Bromoformo (mg/L)": 0.1,
+    "Cloroformo (mg/L)": 0.3,
+    "Dibromoclorometano (mg/L)": 0.1,
+    "Malatión (mg/L)": 0.19,
+    "Bifenilos Policlorados (PCB) (mg/L)": 0.0005
+}
 
-    for k in NORMATIVA_COMPLETA.keys():
-        if f"tog_{k}" not in st.session_state:
-            st.session_state[f"tog_{k}"] = False
-        if f"val_{k}" not in st.session_state:
-            st.session_state[f"val_{k}"] = 0.0
+# ----- A2 -----
+limites_eca["A2"] = {
+    "pH (Potencial de Hidrógeno)": (5.5, 9.0),
+    "Turbidez (Unidades Nefelométricas - NTU)": 100.0,
+    "Conductividad Eléctrica (µS/cm)": 1600.0,
+    "Sólidos Totales Disueltos - TDS (mg/L)": 1000.0,
+    "Temperatura (°C)": 25.0,
+    "Oxígeno Disuelto (mg/L)": 5.0,
+    "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)": 5.0,
+    "Nitratos (mg/L)": 50.0,
+    "Coliformes Totales (NMP/100 mL)": None,
+    "Coliformes Termotolerantes (NMP/100 mL)": 2000.0,
+    "Plomo Total (mg/L)": 0.05,
+    "Arsénico Total (mg/L)": 0.01,
+    "Hierro Total (mg/L)": 1.0,
+    "Sulfatos (mg/L)": 500.0,
+    "Escherichia coli (UFC/100mL)": None,
+    "Helmintos y protozoarios (N° org/L)": None,
+    "Vibrio cholerae (Presencia/100mL)": 0.0,
+    "Organismos de vida libre (N° org/L)": 5e6,
+    "Color verdadero (UCV Pt/Co)": 100.0,
+    "Cloruros (mg/L)": 250.0,
+    "Dureza total (mg CaCO3/L)": None,
+    "Amoniaco (mg/L)": 1.5,
+    "Manganeso Total (mg/L)": 0.4,
+    "Aluminio (mg/L)": 5.0,
+    "Cobre Total (mg/L)": 2.0,
+    "Zinc (mg/L)": 5.0,
+    "DQO (mg/L)": 20.0,
+    "Fenoles (mg/L)": None,
+    "Fluoruros (mg/L)": None,
+    "Fósforo Total (mg/L)": 0.15,
+    "Materiales Flotantes (Ausencia)": 0.0,
+    "Nitritos (exposición corta) (mg NO2/L)": 3.0,
+    "Aceites y Grasas (mg/L)": 1.7,
+    "Antimonio (mg/L)": 0.02,
+    "Berilio (mg/L)": 0.04,
+    "Boro (mg/L)": 2.4,
+    "Cadmio Total (mg/L)": 0.005,
+    "Cianuro libre (mg/L)": 0.2,
+    "Cromo total (mg/L)": 0.05,
+    "Mercurio Total (mg/L)": 0.002,
+    "Selenio (mg/L)": 0.04,
+    "Uranio (mg/L)": 0.02,
+    "Aldicarb (mg/L)": 0.01,
+    "Aldrín + Dieldrín (mg/L)": 0.00003,
+    "Benceno (mg/L)": 0.01,
+    "Clordano (total isómeros) (mg/L)": 0.0002,
+    "DDT (total isómeros) (mg/L)": 0.001,
+    "Endrin (mg/L)": 0.0006,
+    "Lindano (Gamma HCH) (mg/L)": 0.002,
+    "Heptacloro + Heptacloroepóxido (mg/L)": 0.00003,
+    "Pentaclorofenol (mg/L)": 0.009,
+    "Benzo(a)pireno (mg/L)": 0.0007,
+    "1,2-Dicloroetano (mg/L)": 0.03,
+    "Tetracloroeteno (mg/L)": None,
+    "Tricloroeteno (mg/L)": 0.07,
+    "Tetracloruro de carbono (mg/L)": 0.004,
+    "Etilbenceno (mg/L)": 0.3,
+    "Hexaclorobutadieno (mg/L)": 0.0006,
+    "Tolueno (mg/L)": 0.7,
+    "Xileno (mg/L)": 0.5,
+    "Microcistin-LR (mg/L)": 0.001,
+    "Malatión (mg/L)": 0.0001,
+    "Bifenilos Policlorados (PCB) (mg/L)": 0.0005
+}
 
-inicializar_estado()
+# ----- A3 -----
+limites_eca["A3"] = {
+    "pH (Potencial de Hidrógeno)": (5.5, 9.0),
+    "Turbidez (Unidades Nefelométricas - NTU)": 100.0,  # (ECA A3: 100 UNT, en el doc original es 100)
+    "Conductividad Eléctrica (µS/cm)": None,
+    "Sólidos Totales Disueltos - TDS (mg/L)": 1500.0,
+    "Temperatura (°C)": 25.0,
+    "Oxígeno Disuelto (mg/L)": 4.0,
+    "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)": 10.0,
+    "Nitratos (mg/L)": None,
+    "Coliformes Totales (NMP/100 mL)": None,
+    "Coliformes Termotolerantes (NMP/100 mL)": 20000.0,
+    "Plomo Total (mg/L)": 0.05,
+    "Arsénico Total (mg/L)": 0.15,
+    "Hierro Total (mg/L)": 5.0,
+    "Sulfatos (mg/L)": None,
+    "Vibrio cholerae (Presencia/100mL)": 0.0,
+    "Organismos de vida libre (N° org/L)": 5e6,
+    "Color verdadero (UCV Pt/Co)": None,
+    "Cloruros (mg/L)": None,
+    "Amoniaco (mg/L)": None,
+    "Manganeso Total (mg/L)": 0.5,
+    "Aluminio (mg/L)": 5.0,
+    "Cobre Total (mg/L)": 2.0,
+    "Zinc (mg/L)": 5.0,
+    "DQO (mg/L)": 30.0,
+    "Fósforo Total (mg/L)": 0.15,
+    "Materiales Flotantes (Ausencia)": 0.0,
+    "Aceites y Grasas (mg/L)": 1.7,
+    "Berilio (mg/L)": 0.1,
+    "Boro (mg/L)": 2.4,
+    "Cadmio Total (mg/L)": 0.01,
+    "Cianuro libre (mg/L)": 0.2,
+    "Cromo total (mg/L)": 0.05,
+    "Mercurio Total (mg/L)": 0.002,
+    "Selenio (mg/L)": 0.05,
+    "Uranio (mg/L)": 0.02
+}
 
-# =========================================================================
-# FUNCIÓN AUXILIAR PARA RENDERIZAR PARÁMETROS
-# =========================================================================
-def render_param(label, key, default_val=0.0):
-    col1, col2 = st.columns([0.1, 1])
-    with col1:
-        st.toggle(" ", key=f"tog_{key}")
-    with col2:
-        is_active = st.session_state[f"tog_{key}"]
-        st.number_input(label, value=st.session_state.get(f"val_{key}", default_val), 
-                        disabled=not is_active, format="%.4f", key=f"val_{key}")
+# ==========================================
+# PARÁMETROS CON LÍMITE MÍNIMO (INVERTIDO) – ECA
+# ==========================================
+INVERTIDOS_ECA = {"Oxígeno Disuelto (mg/L)"}  # Se aplica a todas las categorías
 
-# =========================================================================
-# INTERFAZ
-# =========================================================================
-st.title("💧 Diagnóstico Híbrido")
+# ==========================================
+# INTERFAZ DE USUARIO
+# ==========================================
+st.title("💧 Sistema de Evaluación de Calidad de Agua")
+st.markdown("Evalúa la potabilidad y requerimientos de tratamiento basados en **MINSA**, **ECA (Categoría 1)** y un **Modelo de Inteligencia Artificial**.")
 
-tab1, tab2, tab3 = st.tabs(["📊 1. Inputs IA", "⚖️ 2. Normativa Completa", "🔬 3. Diagnóstico Final"])
+st.sidebar.header("Categoría ECA a Evaluar")
+eca_categoria = st.sidebar.selectbox("Seleccione la subcategoría del cuerpo receptor:", ["A1", "A2", "A3"],
+                                     help="A1: Desinfección, A2: Tratamiento Convencional, A3: Tratamiento Avanzado")
 
-# --- TAB 1: Inputs IA ---
-with tab1:
-    st.subheader("Parámetros del Modelo (IA)")
-    
-    col_btn1, col_btn2 = st.columns(2)
-    if col_btn1.button("✅ Activar todos", key="btn_act_t1"):
-        for k in campos_ml: st.session_state[f"tog_{k}"] = True
-        st.rerun()
-    if col_btn2.button("❌ Desactivar todos", key="btn_des_t1"):
-        for k in campos_ml: st.session_state[f"tog_{k}"] = False
-        st.rerun()
-        
-    st.write("---")
-    
-    for k, v in campos_ml.items():
-        render_param(k, k, v)
+st.sidebar.header("Ingreso de Parámetros")
+st.sidebar.write("Ingrese los valores de la muestra:")
 
-# --- TAB 2: Normativa Completa ---
-with tab2:
-    st.subheader("Parámetros Normativos (MINSA / ECA)")
-    categorias = ["1. Microbiológicos", "2. Organolépticos", "3. Inorgánicos", "4. Orgánicos", "5. Radiactivos"]
-    ya_incluidos = {'pH', 'Conductividad', 'Temperatura', 'Oxígeno Disuelto', 'DBO5',
-                    'Coliformes Termotolerantes', 'Aceites y Grasas', 'Arsénico',
-                    'Plomo', 'Cobre', 'Manganeso', 'Calcio', 'Magnesio', 'Dureza total'}
-    
-    for cat in categorias:
-        with st.expander(cat, expanded=False):
-            params_cat = [p for p, info in NORMATIVA_COMPLETA.items() if info['categoria'] == cat and p not in ya_incluidos]
-            
-            c1, c2 = st.columns(2)
-            if c1.button(f"✅ Activar categoría", key=f"act_{cat}"):
-                for p in params_cat: st.session_state[f"tog_{p}"] = True
-                st.rerun()
-            if c2.button(f"❌ Desactivar categoría", key=f"des_{cat}"):
-                for p in params_cat: st.session_state[f"tog_{p}"] = False
-                st.rerun()
-            
-            for param in params_cat:
-                info = NORMATIVA_COMPLETA[param]
-                render_param(f"{param} ({info['unidad']})", param, 0.0)
-
-# --- TAB 3: Diagnóstico Final ---
-with tab3:
-    st.subheader("Resultados")
-    
-    active_model_keys = [k for k in campos_ml.keys() if st.session_state.get(f"tog_{k}", False)]
-    active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_{k}", False) and k not in ya_incluidos]
-    
-    # Identificar parámetros del modelo problemáticos respecto a MINSA (simulación)
-    model_problematicos = []
-    for param in active_model_keys:
-        valor = st.session_state.get(f"val_{param}", 0.0)
-        # Mapeo simple si existe en la normativa para cruzar info
-        nombre_norma = None
-        for n_k in NORMATIVA_COMPLETA.keys():
-            if param.lower() in n_k.lower() or n_k.lower() in param.lower():
-                nombre_norma = n_k
-                break
-        
-        if nombre_norma:
-            limite = NORMATIVA_COMPLETA[nombre_norma]['minsa']
-            if limite is not None:
-                if isinstance(limite, tuple):
-                    if not (limite[0] <= valor <= limite[1]): model_problematicos.append(param)
-                elif NORMATIVA_COMPLETA[nombre_norma].get('invertido', False):
-                    if valor < limite: model_problematicos.append(param)
-                elif valor > limite:
-                    model_problematicos.append(param)
-
-    if st.button("🚀 Ejecutar Diagnóstico", use_container_width=True):
-        # 1. PREDICCIÓN IA
-        st.markdown("### 🤖 Predicción de IA")
-        st.write(f"**Parámetros seleccionados:** {len(active_model_keys)} de {len(campos_ml)}")
-        
-        if modelo_pipeline:
-            # Reconstruir datos para la IA
-            inputs_globales = {k: (st.session_state.get(f"val_{k}", 0.0) if st.session_state.get(f"tog_{k}", False) else np.nan) for k in campos_ml.keys()}
-            features_model = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
-            df_ia = pd.DataFrame([inputs_globales])[features_model]
-            
-            try:
-                prob = modelo_pipeline.predict_proba(df_ia)[0][1]
-                st.metric("Confianza / Probabilidad de Potabilidad", f"{prob*100:.2f}%")
-                
-                if model_problematicos:
-                    st.warning(f"Parámetros que afectan negativamente la potabilidad detectados: {', '.join(model_problematicos)}")
-                
-                if prob > 0.75:
-                    st.success("✅ IA: Apto para consumo (umbral > 0.75)")
-                else:
-                    st.error("❌ IA: No apto según el modelo predictivo")
-            except Exception as e:
-                st.warning(f"No se pudo ejecutar la IA adecuadamente (El modelo imputará automáticamente). Error detallado: {e}")
+# Crear inputs en el sidebar (se usa un expander para no saturar)
+valores_usuario = {}
+with st.sidebar.expander("Parámetros (click para expandir)", expanded=True):
+    for param in PARAMETROS_NOMBRES:
+        # Valor por defecto 0.0, paso adecuado
+        if "Coliformes" in param or "Escherichia" in param:
+            step = 1.0
         else:
-            st.info("Modelo no cargado. Verifica la conexión a Hugging Face.")
+            step = 0.1
+        valores_usuario[param] = st.number_input(param, value=0.0, step=step, format="%.4f")
 
-        st.markdown("---")
+# Botón de evaluación
+if st.sidebar.button("Evaluar Calidad de Agua"):
 
-        # 2. EVALUACIÓN NORMATIVA MINSA / ECA
-        st.markdown("### 🏛️ Evaluación Normativa")
-        if not active_norm_keys:
-            st.info("ℹ️ En el apartado de normativas (Tab 2) no se activó ningún parámetro para su evaluación.")
-        else:
-            st.write(f"Evaluando **{len(active_norm_keys)}** parámetros extra normativos:")
-            
-            # --- EVALUACIÓN MINSA ---
-            incumplimientos_minsa = []
-            for param in active_norm_keys:
-                valor = st.session_state.get(f"val_{param}", 0.0)
-                info = NORMATIVA_COMPLETA[param]
-                minsa_lim = info['minsa']
-                if minsa_lim is None: continue
-                
-                if isinstance(minsa_lim, tuple):
-                    low, high = minsa_lim
-                    if not (low <= valor <= high):
-                        incumplimientos_minsa.append((param, valor, f"{low} - {high}"))
-                elif info.get('invertido', False):
-                    if valor < minsa_lim:
-                        incumplimientos_minsa.append((param, valor, f">= {minsa_lim}"))
-                else:
-                    if valor > minsa_lim:
-                        incumplimientos_minsa.append((param, valor, f"<= {minsa_lim}"))
-            
-            if incumplimientos_minsa:
-                st.error(f"⚠️ {len(incumplimientos_minsa)} parámetros sobrepasan los límites MINSA:")
-                df_inc = pd.DataFrame(incumplimientos_minsa, columns=['Parámetro', 'Valor Ingresado', 'Límite Normativo'])
-                st.table(df_inc)
+    # --- 1. EVALUACIÓN NORMATIVA MINSA ---
+    cumplen_minsa = []
+    no_cumplen_minsa = []
+
+    for param in PARAMETROS_NOMBRES:
+        valor = valores_usuario[param]
+        limite = limites_minsa.get(param)
+
+        if limite is None:
+            continue  # Sin límite, no se evalúa
+
+        if param in INVERTIDOS_MINSA:
+            if valor >= limite:
+                cumplen_minsa.append(param)
             else:
-                st.success("✅ Todos los parámetros extra evaluados CUMPLEN con MINSA.")
+                no_cumplen_minsa.append(param)
+        elif isinstance(limite, tuple):
+            if limite[0] <= valor <= limite[1]:
+                cumplen_minsa.append(param)
+            else:
+                no_cumplen_minsa.append(param)
+        else:  # Límite máximo
+            if valor <= limite:
+                cumplen_minsa.append(param)
+            else:
+                no_cumplen_minsa.append(param)
 
-            # --- EVALUACIÓN ECA ---
-            st.markdown("#### 🌿 Clasificación ECA (Categoría 1)")
-            peor_cat = "A1"
-            detalles_eca = []
-            orden_eca = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
-            
-            for param in active_norm_keys:
-                valor = st.session_state.get(f"val_{param}", 0.0)
-                info = NORMATIVA_COMPLETA[param]
-                cat = None
-                invertido = info.get('invertido', False)
-                for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
-                    lim = info.get(subcat)
-                    if lim is None: continue
-                    if isinstance(lim, tuple):
-                        if lim[0] <= valor <= lim[1]:
-                            cat = subcat.replace('eca_', '').upper()
-                            break
-                    elif invertido:
-                        if valor >= lim:
-                            cat = subcat.replace('eca_', '').upper()
-                            break
-                    else:
-                        if valor <= lim:
-                            cat = subcat.replace('eca_', '').upper()
-                            break
-                if cat is None:
-                    cat = "EXCEDE A3"
+    # --- 2. EVALUACIÓN NORMATIVA ECA ---
+    cumplen_eca = []
+    no_cumplen_eca = []
+    limite_actual = limites_eca[eca_categoria]
 
-                detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría Asignada': cat})
-                if orden_eca.get(cat, 0) > orden_eca.get(peor_cat, 0):
-                    peor_cat = cat
+    for param in PARAMETROS_NOMBRES:
+        valor = valores_usuario[param]
+        limite = limite_actual.get(param)
 
-            st.write(f"**Peor nivel detectado en ECA:** `{peor_cat}`")
-            
-            df_eca = pd.DataFrame(detalles_eca)
-            # Mostrar tabla ECA destacando los que exceden
-            if not df_eca.empty:
-                st.dataframe(df_eca)
+        if limite is None:
+            continue
+
+        if param in INVERTIDOS_ECA:
+            if valor >= limite:
+                cumplen_eca.append(param)
+            else:
+                no_cumplen_eca.append(param)
+        elif isinstance(limite, tuple):
+            if limite[0] <= valor <= limite[1]:
+                cumplen_eca.append(param)
+            else:
+                no_cumplen_eca.append(param)
+        else:
+            if valor <= limite:
+                cumplen_eca.append(param)
+            else:
+                no_cumplen_eca.append(param)
+
+    # --- 3. PREDICCIÓN DEL MODELO (IA) ---
+    if modelo is not None:
+        # Las 14 características que espera el modelo (en el mismo orden)
+        FEATURES_MODELO = [
+            "pH (Potencial de Hidrógeno)",
+            "Turbidez (Unidades Nefelométricas - NTU)",
+            "Conductividad Eléctrica (µS/cm)",
+            "Sólidos Totales Disueltos - TDS (mg/L)",
+            "Temperatura (°C)",
+            "Oxígeno Disuelto (mg/L)",
+            "Demanda Bioquímica de Oxígeno - DBO5 (mg/L)",
+            "Nitratos (mg/L)",
+            "Coliformes Totales (NMP/100 mL)",
+            "Coliformes Termotolerantes (NMP/100 mL)",
+            "Plomo Total (mg/L)",
+            "Arsénico Total (mg/L)",
+            "Hierro Total (mg/L)",
+            "Sulfatos (mg/L)"
+        ]
+        input_data = np.array([[valores_usuario[p] for p in FEATURES_MODELO]])
+        prediccion = modelo.predict(input_data)[0]
+        resultado_ia = "Potable" if prediccion == 1 else "No Potable"
+    else:
+        resultado_ia = "Modelo no disponible (verifique el archivo .pkl)"
+
+    # --- 4. MOSTRAR RESULTADOS ---
+    st.header("📊 Resultados de la Evaluación")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Evaluación según MINSA (DS N° 031-2010-SA)")
+        if len(no_cumplen_minsa) == 0:
+            st.success("✅ El agua CUMPLE con los estándares de potabilidad del MINSA (parámetros ingresados).")
+        else:
+            st.error(f"❌ {len(no_cumplen_minsa)} parámetros NO CUMPLEN con el MINSA.")
+
+        with st.expander("Detalle MINSA (parámetros evaluados)", expanded=True):
+            if cumplen_minsa:
+                st.write("**Cumplen:**")
+                for p in cumplen_minsa:
+                    st.write(f"- {p}: {valores_usuario[p]}")
+            if no_cumplen_minsa:
+                st.write("**No cumplen:**")
+                for p in no_cumplen_minsa:
+                    st.write(f"- {p}: {valores_usuario[p]} (Límite: {limites_minsa[p]})")
+
+    with col2:
+        st.subheader(f"Evaluación según ECA – Subcategoría {eca_categoria}")
+        if len(no_cumplen_eca) == 0:
+            st.success(f"✅ El agua CUMPLE con los estándares ECA {eca_categoria}.")
+        else:
+            st.error(f"❌ {len(no_cumplen_eca)} parámetros NO CUMPLEN con ECA {eca_categoria}.")
+
+        with st.expander(f"Detalle ECA {eca_categoria} (parámetros evaluados)", expanded=True):
+            if cumplen_eca:
+                st.write("**Cumplen:**")
+                for p in cumplen_eca:
+                    st.write(f"- {p}: {valores_usuario[p]}")
+            if no_cumplen_eca:
+                st.write("**No cumplen:**")
+                for p in no_cumplen_eca:
+                    st.write(f"- {p}: {valores_usuario[p]} (Límite: {limite_actual[p]})")
+
+    st.markdown("---")
+
+    # --- 5. MODELO IA Y TRATAMIENTO SUGERIDO ---
+    st.header("🤖 Predicción de Inteligencia Artificial")
+    if resultado_ia == "Potable":
+        st.success(f"El modelo predictivo clasifica esta muestra como: **{resultado_ia}**")
+    elif resultado_ia == "No Potable":
+        st.warning(f"El modelo predictivo clasifica esta muestra como: **{resultado_ia}**")
+    else:
+        st.info(resultado_ia)
+
+    st.header("🛠️ Sugerencia de Tratamiento Requerido")
+    if len(no_cumplen_minsa) == 0:
+        st.info("El agua ya cumple con los estándares MINSA. Solo se requiere asegurar la cloración residual en la red de distribución.")
+    elif len(no_cumplen_eca) == 0:
+        if eca_categoria == "A1":
+            st.info("Fuente de agua categoría A1. Tratamiento sugerido: **Desinfección simple** (cloración, ozonización).")
+        elif eca_categoria == "A2":
+            st.info("Fuente de agua categoría A2. Tratamiento sugerido: **Tratamiento convencional** (coagulación, floculación, decantación, filtración, desinfección).")
+        elif eca_categoria == "A3":
+            st.info("Fuente de agua categoría A3. Tratamiento sugerido: **Tratamiento avanzado** (procesos convencionales + ósmosis inversa, carbón activado, oxidación avanzada).")
+    else:
+        st.error(f"El agua excede los límites de la categoría ECA {eca_categoria}. Se requieren tratamientos específicos para remover los parámetros infractores mostrados arriba, o buscar una fuente alternativa.")
+
+else:
+    st.info("👈 Ingrese los valores en el panel lateral y haga clic en 'Evaluar Calidad de Agua'.")
