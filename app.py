@@ -16,17 +16,14 @@ st.markdown("""
     .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
+    .danger-box { padding: 15px; background-color: #FFEBEE; border-radius: 8px; border-left: 8px solid #D32F2F; color: #B71C1C; font-weight: bold; }
 
     /* Centrar tablas y contenido */
-    [data-testid="stTable"] table {
-        margin-left: auto;
-        margin-right: auto;
-        text-align: center;
-    }
+    [data-testid="stTable"] table,
     [data-testid="stDataFrame"] table {
-        margin-left: auto;
-        margin-right: auto;
-        text-align: center;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        text-align: center !important;
     }
     th, td {
         text-align: center !important;
@@ -340,7 +337,9 @@ with tab3:
                 st.metric("Confianza / Probabilidad de Potabilidad", f"{prob*100:.2f}%")
                 
                 if model_problematicos:
-                    st.warning(f"Parámetros que afectan negativamente la potabilidad detectados: {', '.join(model_problematicos)}")
+                    # Convertir claves cortas a nombres completos
+                    nombres_problematicos = [nombres_modelo_ui.get(p, p) for p in model_problematicos]
+                    st.warning(f"Parámetros que afectan negativamente la potabilidad detectados: {', '.join(nombres_problematicos)}")
                 
                 if prob > 0.75:
                     st.success("✅ IA: Apto para consumo (umbral > 0.75)")
@@ -368,7 +367,6 @@ with tab3:
                 minsa_lim = info['minsa']
                 if minsa_lim is None: continue
                 
-                # Si el límite es 0 y el valor es 0, está bien (no se reporta como incumplimiento)
                 if isinstance(minsa_lim, tuple):
                     low, high = minsa_lim
                     if not (low <= valor <= high):
@@ -377,8 +375,6 @@ with tab3:
                     if valor < minsa_lim:
                         incumplimientos_minsa.append((param, valor, f">= {minsa_lim}"))
                 else:
-                    # Para límite máximo: si valor > límite es incumplimiento.
-                    # Pero si el límite es 0 y el valor es 0, valor <= límite se cumple.
                     if minsa_lim == 0:
                         if valor > 0:
                             incumplimientos_minsa.append((param, valor, f"<= {minsa_lim}"))
@@ -409,7 +405,6 @@ with tab3:
                     lim = info.get(subcat)
                     if lim is None: continue
                     
-                    # Evaluar límite (puede ser 0)
                     if isinstance(lim, tuple):
                         if lim[0] <= valor <= lim[1]:
                             cat = subcat.replace('eca_', '').upper()
@@ -419,7 +414,6 @@ with tab3:
                             cat = subcat.replace('eca_', '').upper()
                             break
                     else:
-                        # Si el límite es 0, el valor debe ser <=0 para cumplir
                         if lim == 0:
                             if valor <= 0:
                                 cat = subcat.replace('eca_', '').upper()
@@ -449,6 +443,12 @@ with tab3:
 
             excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
             if excedentes:
+                st.markdown("""
+                <div class="danger-box">
+                    ⚠️ <b>ALERTA CRÍTICA:</b> Existen parámetros que superan el límite de la categoría A3 (tratamiento avanzado).<br>
+                    Esta agua <b>no es apta</b> para potabilización convencional ni avanzada. Se requiere una fuente alternativa o procesos especializados.
+                </div>
+                """, unsafe_allow_html=True)
                 st.error("⚠️ Parámetros que EXCEDEN la categoría A3 (tratamiento avanzado):")
                 df_exc = pd.DataFrame(excedentes)
                 df_exc = df_exc[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
