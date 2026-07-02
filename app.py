@@ -195,6 +195,24 @@ campos_ml = {
     'MnT': 0.0, 'Ca': 0.0, 'Mg': 0.0, 'Dureza': 0.0
 }
 
+# Nombres completos para los parámetros del modelo (solo para la interfaz)
+nombres_modelo_ui = {
+    'pH': 'pH (Potencial de Hidrógeno)',
+    'CE': 'Conductividad Eléctrica (µS/cm)',
+    'T': 'Temperatura (°C)',
+    'OD': 'Oxígeno Disuelto (mg/L)',
+    'DBO': 'Demanda Bioquímica de Oxígeno - DBO5 (mg/L)',
+    'CT': 'Coliformes Totales (NMP/100 mL)',
+    'AyG': 'Aceites y Grasas (mg/L)',
+    'ArT': 'Arsénico Total (mg/L)',
+    'PbT': 'Plomo Total (mg/L)',
+    'CuT': 'Cobre Total (mg/L)',
+    'MnT': 'Manganeso Total (mg/L)',
+    'Ca': 'Calcio (mg/L)',
+    'Mg': 'Magnesio (mg/L)',
+    'Dureza': 'Dureza total (mg CaCO3/L)'
+}
+
 def inicializar_estado():
     for k in campos_ml:
         if f"tog_{k}" not in st.session_state:
@@ -244,7 +262,8 @@ with tab1:
     st.write("---")
     
     for k, v in campos_ml.items():
-        render_param(k, k, v)
+        # Mostrar el nombre completo en la etiqueta, pero usar la clave corta para los widgets
+        render_param(nombres_modelo_ui[k], k, v)
 
 # --- TAB 2: Normativa Completa ---
 with tab2:
