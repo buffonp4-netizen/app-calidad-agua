@@ -16,6 +16,21 @@ st.markdown("""
     .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
     .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
     .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
+
+    /* Centrar tablas y contenido */
+    [data-testid="stTable"] table {
+        margin-left: auto;
+        margin-right: auto;
+        text-align: center;
+    }
+    [data-testid="stDataFrame"] table {
+        margin-left: auto;
+        margin-right: auto;
+        text-align: center;
+    }
+    th, td {
+        text-align: center !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -353,6 +368,7 @@ with tab3:
                 minsa_lim = info['minsa']
                 if minsa_lim is None: continue
                 
+                # Si el límite es 0 y el valor es 0, está bien (no se reporta como incumplimiento)
                 if isinstance(minsa_lim, tuple):
                     low, high = minsa_lim
                     if not (low <= valor <= high):
@@ -361,13 +377,19 @@ with tab3:
                     if valor < minsa_lim:
                         incumplimientos_minsa.append((param, valor, f">= {minsa_lim}"))
                 else:
-                    if valor > minsa_lim:
-                        incumplimientos_minsa.append((param, valor, f"<= {minsa_lim}"))
+                    # Para límite máximo: si valor > límite es incumplimiento.
+                    # Pero si el límite es 0 y el valor es 0, valor <= límite se cumple.
+                    if minsa_lim == 0:
+                        if valor > 0:
+                            incumplimientos_minsa.append((param, valor, f"<= {minsa_lim}"))
+                    else:
+                        if valor > minsa_lim:
+                            incumplimientos_minsa.append((param, valor, f"<= {minsa_lim}"))
             
             if incumplimientos_minsa:
                 st.error(f"⚠️ {len(incumplimientos_minsa)} parámetros sobrepasan los límites MINSA:")
                 df_inc = pd.DataFrame(incumplimientos_minsa, columns=['Parámetro', 'Valor Ingresado', 'Límite Normativo'])
-                st.dataframe(df_inc)  # Usamos dataframe para mejor visualización
+                st.dataframe(df_inc)
             else:
                 st.success("✅ Todos los parámetros extra evaluados CUMPLEN con MINSA.")
 
@@ -386,6 +408,8 @@ with tab3:
                 for subcat in ['eca_a1', 'eca_a2', 'eca_a3']:
                     lim = info.get(subcat)
                     if lim is None: continue
+                    
+                    # Evaluar límite (puede ser 0)
                     if isinstance(lim, tuple):
                         if lim[0] <= valor <= lim[1]:
                             cat = subcat.replace('eca_', '').upper()
@@ -395,13 +419,18 @@ with tab3:
                             cat = subcat.replace('eca_', '').upper()
                             break
                     else:
-                        if valor <= lim:
-                            cat = subcat.replace('eca_', '').upper()
-                            break
+                        # Si el límite es 0, el valor debe ser <=0 para cumplir
+                        if lim == 0:
+                            if valor <= 0:
+                                cat = subcat.replace('eca_', '').upper()
+                                break
+                        else:
+                            if valor <= lim:
+                                cat = subcat.replace('eca_', '').upper()
+                                break
                 if cat is None:
                     cat = "EXCEDE A3"
 
-                # Obtenemos el límite A3 para mostrarlo (si no existe se muestra N/A)
                 limite_a3 = info.get('eca_a3', 'N/A')
                 detalles_eca.append({
                     'Parámetro': param,
@@ -414,12 +443,10 @@ with tab3:
 
             st.write(f"**Peor nivel detectado en ECA:** `{peor_cat}`")
             
-            # Tabla completa con todos los parámetros y su límite A3
             df_eca = pd.DataFrame(detalles_eca)
             df_eca = df_eca[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
             st.dataframe(df_eca)
 
-            # Destacar los que exceden A3
             excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
             if excedentes:
                 st.error("⚠️ Parámetros que EXCEDEN la categoría A3 (tratamiento avanzado):")
