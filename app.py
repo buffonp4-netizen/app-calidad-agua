@@ -33,7 +33,7 @@ def load_water_model():
 modelo_pipeline = load_water_model()
 
 # =========================================================================
-# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1) – CORREGIDO
+# DICCIONARIO NORMATIVO COMPLETO (MINSA + ECA Categoría 1)
 # =========================================================================
 NORMATIVA_COMPLETA = {
     # ========== 1. Microbiológicos ==========
@@ -54,7 +54,7 @@ NORMATIVA_COMPLETA = {
     "pH":                            {'minsa': (6.5, 8.5), 'eca_a1': (6.5, 8.5), 'eca_a2': (5.5, 9.0), 'eca_a3': (5.5, 9.0), 'invertido': False, 'unidad': 'Unidades', 'categoria': '2. Organolépticos'},
     "Conductividad":                 {'minsa': 1500,  'eca_a1': 1500,  'eca_a2': 1600,  'eca_a3': None,   'invertido': False, 'unidad': 'µS/cm',      'categoria': '2. Organolépticos'},
     "Sólidos totales disueltos":     {'minsa': 1000,  'eca_a1': 1000,  'eca_a2': 1000,  'eca_a3': 1500,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
-    "Cloruros":                      {'minsa': 250,   'eca_a1': 250,   'eca_a2': 250,   'eca_a3': 250,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},  # corregido A3=250
+    "Cloruros":                      {'minsa': 250,   'eca_a1': 250,   'eca_a2': 250,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
     "Sulfatos":                      {'minsa': 250,   'eca_a1': 250,   'eca_a2': 500,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
     "Dureza total":                  {'minsa': 500,   'eca_a1': 500,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg CaCO3/L', 'categoria': '2. Organolépticos'},
     "Amoniaco":                      {'minsa': 1.5,   'eca_a1': 1.5,   'eca_a2': 1.5,   'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
@@ -73,7 +73,7 @@ NORMATIVA_COMPLETA = {
     "Fluoruros":                     {'minsa': 1.0,   'eca_a1': 1.5,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
     "Fósforo Total":                 {'minsa': None,  'eca_a1': 0.1,   'eca_a2': 0.15,  'eca_a3': 0.15,   'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
     "Materiales Flotantes":          {'minsa': None,  'eca_a1': 0,     'eca_a2': 0,     'eca_a3': 0,      'invertido': False, 'unidad': 'Ausencia',   'categoria': '2. Organolépticos'},
-    "Nitratos":                      {'minsa': 50,    'eca_a1': 50,    'eca_a2': 50,    'eca_a3': 50,     'invertido': False, 'unidad': 'mg NO3/L',   'categoria': '2. Organolépticos'},  # corregido A3=50
+    "Nitratos":                      {'minsa': 50,    'eca_a1': 50,    'eca_a2': 50,    'eca_a3': None,   'invertido': False, 'unidad': 'mg NO3/L',   'categoria': '2. Organolépticos'},
     "Nitritos (exposición corta)":   {'minsa': 3.0,   'eca_a1': 3.0,   'eca_a2': 3.0,   'eca_a3': None,   'invertido': False, 'unidad': 'mg NO2/L',   'categoria': '2. Organolépticos'},
     "Nitritos (exposición larga)":   {'minsa': 0.2,   'eca_a1': None,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg NO2/L',   'categoria': '2. Organolépticos'},
     "Aceites y Grasas":              {'minsa': 0.5,   'eca_a1': 0.5,   'eca_a2': 1.7,   'eca_a3': 1.7,    'invertido': False, 'unidad': 'mg/L',       'categoria': '2. Organolépticos'},
@@ -84,7 +84,7 @@ NORMATIVA_COMPLETA = {
     "Arsénico":                      {'minsa': 0.01,  'eca_a1': 0.01,  'eca_a2': 0.01,  'eca_a3': 0.15,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Bario":                         {'minsa': 0.7,   'eca_a1': 0.7,   'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Berilio":                       {'minsa': None,  'eca_a1': 0.012, 'eca_a2': 0.04,  'eca_a3': 0.1,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
-    "Boro":                          {'minsa': 1.5,   'eca_a1': 2.4,   'eca_a2': 2.4,   'eca_a3': 2.4,    'invertido': False, 'unidad': 'mg B/L',     'categoria': '3. Inorgánicos'},  # corregido minsa 1.5
+    "Boro":                          {'minsa': 0.5,   'eca_a1': 2.4,   'eca_a2': 2.4,   'eca_a3': 2.4,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Cadmio":                        {'minsa': 0.003, 'eca_a1': 0.003, 'eca_a2': 0.005, 'eca_a3': 0.01,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Cianuro total":                 {'minsa': 0.07,  'eca_a1': 0.07,  'eca_a2': None,  'eca_a3': None,   'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
     "Cianuro libre":                 {'minsa': None,  'eca_a1': None,  'eca_a2': 0.2,   'eca_a3': 0.2,    'invertido': False, 'unidad': 'mg/L',       'categoria': '3. Inorgánicos'},
@@ -262,6 +262,7 @@ with tab1:
     st.write("---")
     
     for k, v in campos_ml.items():
+        # Mostrar el nombre completo en la etiqueta, pero usar la clave corta para los widgets
         render_param(nombres_modelo_ui[k], k, v)
 
 # --- TAB 2: Normativa Completa ---
@@ -295,9 +296,11 @@ with tab3:
     active_model_keys = [k for k in campos_ml.keys() if st.session_state.get(f"tog_{k}", False)]
     active_norm_keys = [k for k in NORMATIVA_COMPLETA.keys() if st.session_state.get(f"tog_{k}", False) and k not in ya_incluidos]
     
+    # Identificar parámetros del modelo problemáticos respecto a MINSA (simulación)
     model_problematicos = []
     for param in active_model_keys:
         valor = st.session_state.get(f"val_{param}", 0.0)
+        # Mapeo simple si existe en la normativa para cruzar info
         nombre_norma = None
         for n_k in NORMATIVA_COMPLETA.keys():
             if param.lower() in n_k.lower() or n_k.lower() in param.lower():
@@ -320,6 +323,7 @@ with tab3:
         st.write(f"**Parámetros seleccionados:** {len(active_model_keys)} de {len(campos_ml)}")
         
         if modelo_pipeline:
+            # Reconstruir datos para la IA
             inputs_globales = {k: (st.session_state.get(f"val_{k}", 0.0) if st.session_state.get(f"tog_{k}", False) else np.nan) for k in campos_ml.keys()}
             features_model = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
             df_ia = pd.DataFrame([inputs_globales])[features_model]
@@ -404,23 +408,13 @@ with tab3:
                 if cat is None:
                     cat = "EXCEDE A3"
 
-                detalles_eca.append({'Parámetro': param, 'Valor Ingresado': valor, 'Categoría Asignada': cat})
+                detalles_eca.append({'Parámetro': param, 'Valor': valor, 'Categoría Asignada': cat})
                 if orden_eca.get(cat, 0) > orden_eca.get(peor_cat, 0):
                     peor_cat = cat
 
             st.write(f"**Peor nivel detectado en ECA:** `{peor_cat}`")
             
-            # Tabla solo de excedentes (categoría EXCEDE A3) con el límite ECA A3
-            excedentes = [d for d in detalles_eca if d['Categoría Asignada'] == 'EXCEDE A3']
-            if excedentes:
-                st.error("⚠️ Parámetros que exceden la categoría A3:")
-                df_exc = pd.DataFrame(excedentes)
-                # Añadir el límite ECA A3 (o el último límite disponible) para referencia
-                df_exc['Límite ECA (A3)'] = df_exc['Parámetro'].apply(
-                    lambda p: NORMATIVA_COMPLETA[p].get('eca_a3', 'N/A')
-                )
-                # Reordenar columnas
-                df_exc = df_exc[['Parámetro', 'Valor Ingresado', 'Límite ECA (A3)', 'Categoría Asignada']]
-                st.table(df_exc)
-            else:
-                st.success("Ningún parámetro excede la categoría A3 del ECA.")
+            df_eca = pd.DataFrame(detalles_eca)
+            # Mostrar tabla ECA destacando los que exceden
+            if not df_eca.empty:
+                st.dataframe(df_eca)
