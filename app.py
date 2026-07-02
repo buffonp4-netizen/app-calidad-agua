@@ -4,110 +4,204 @@ import numpy as np
 import joblib
 from huggingface_hub import hf_hub_download
 
-# --- CONFIGURACIÓN ---
+# =========================================================================
+# CONFIGURACIÓN VISUAL DE LA APP
+# =========================================================================
 st.set_page_config(page_title="Sistema Híbrido - Calidad del Agua", page_icon="💧", layout="wide")
 
-# --- CARGA DEL MODELO ---
+st.markdown("""
+<style>
+    .card-potable { padding: 20px; background-color: #D1E7DD; border-radius: 10px; border-left: 8px solid #0F5132; color: #0F5132; }
+    .card-nopotable { padding: 20px; background-color: #F8D7DA; border-radius: 10px; border-left: 8px solid #842029; color: #842029; }
+    .treatment-box { padding: 15px; background-color: #FFF3CD; border-radius: 8px; border-left: 5px solid #FFC107; color: #664D03; font-weight: bold;}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("💧 Sistema Híbrido de Diagnóstico de Calidad del Agua")
+st.markdown("### Validación Normativa Multi-nivel (MINSA/ECA) + Inteligencia Artificial")
+
+# =========================================================================
+# 2. FUNCIÓN DE CARGA DEL MODELO DESDE HUGGING FACE
+# =========================================================================
 @st.cache_resource
 def load_water_model():
     try:
+        # Descarga el archivo automáticamente desde tu repo buffoness/modelo-agua
         model_path = hf_hub_download(repo_id="buffoness/modelo-agua", filename="modelo_agua.pkl")
         return joblib.load(model_path)
     except Exception as e:
-        st.error(f"Error al cargar el modelo: {e}")
+        st.error(f"Error al cargar el modelo desde Hugging Face: {e}")
         return None
 
 modelo_pipeline = load_water_model()
 
-# --- DEFINICIÓN DE PARÁMETROS ---
-FEATURES_ML = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
-
-# Parámetros adicionales (Solo para informe legal, no para IA)
-PARAMETROS_NORMATIVOS = {
-    'Cadmio (Total) (mg/L)': {'minsa': 0.003, 'eca_a1': 0.003, 'default': 0.001},
-    'Mercurio (Total) (mg/L)': {'minsa': 0.001, 'eca_a1': 0.001, 'default': 0.0005},
-    'Hierro (Total) (mg/L)': {'minsa': 0.3, 'eca_a1': 0.3, 'default': 0.1},
-    'Sulfatos (SO4=) (mg/L)': {'minsa': 250.0, 'eca_a1': 250.0, 'default': 80.0},
-    'Turbidez (UNT)': {'minsa': 5.0, 'eca_a1': 5.0, 'default': 2.0}
+# =========================================================================
+# 3. DICCIONARIOS NORMATIVOS (MINSA Y ECA 1)
+# =========================================================================
+NORMATIVA_BASE = {
+    'pH': {'minsa': (6.5, 8.5), 'eca_a1': (6.5, 8.5), 'eca_a2': (5.5, 9.0), 'eca_a3': (5.5, 9.0)},
+    'CE': {'minsa': 1500.0, 'eca_a1': 1500.0, 'eca_a2': 1600.0, 'eca_a3': 2500.0},
+    'T': {'minsa': 35.0, 'eca_a1': 25.0, 'eca_a2': 25.0, 'eca_a3': 25.0}, 
+    'OD': {'minsa': 4.0, 'eca_a1': 6.0, 'eca_a2': 5.0, 'eca_a3': 4.0, 'invertido': True}, 
+    'DBO': {'minsa': 3.0, 'eca_a1': 3.0, 'eca_a2': 5.0, 'eca_a3': 10.0},
+    'CT': {'minsa': 0.0, 'eca_a1': 0.0, 'eca_a2': 2000.0, 'eca_a3': 20000.0},
+    'AyG': {'minsa': 0.5, 'eca_a1': 0.5, 'eca_a2': 1.0, 'eca_a3': 1.0},
+    'ArT': {'minsa': 0.01, 'eca_a1': 0.01, 'eca_a2': 0.01, 'eca_a3': 0.1},
+    'PbT': {'minsa': 0.01, 'eca_a1': 0.01, 'eca_a2': 0.01, 'eca_a3': 0.05},
+    'CuT': {'minsa': 2.0, 'eca_a1': 2.0, 'eca_a2': 2.0, 'eca_a3': 2.0},
+    'MnT': {'minsa': 0.4, 'eca_a1': 0.4, 'eca_a2': 0.4, 'eca_a3': 0.5},
+    'Ca': {'minsa': 200.0, 'eca_a1': 200.0, 'eca_a2': 200.0, 'eca_a3': 300.0},
+    'Mg': {'minsa': 150.0, 'eca_a1': 150.0, 'eca_a2': 150.0, 'eca_a3': 200.0},
+    'Dureza': {'minsa': 500.0, 'eca_a1': 500.0, 'eca_a2': 500.0, 'eca_a3': 500.0}
 }
 
-# --- FUNCIÓN DE INPUT ---
-def input_variable(label, default_value, min_val=0.0, format="%.4f"):
-    col1, col2 = st.columns([0.2, 0.8])
-    with col1:
-        tiene_dato = st.checkbox(f"✅ Incluir", value=True, key=f"check_{label}")
-    with col2:
-        val = st.number_input(label, min_value=min_val, value=default_value, 
-                              format=format, disabled=not tiene_dato, key=f"input_{label}")
-    return val if tiene_dato else np.nan
+PARAMETROS_ADICIONALES_POOL = {
+    'Cadmio (Total) (mg/L)': {'minsa': 0.003, 'eca_a1': 0.003, 'eca_a2': 0.005, 'eca_a3': 0.005, 'default': 0.001},
+    'Mercurio (Total) (mg/L)': {'minsa': 0.001, 'eca_a1': 0.001, 'eca_a2': 0.001, 'eca_a3': 0.002, 'default': 0.0005},
+    'Hierro (Total) (mg/L)': {'minsa': 0.3, 'eca_a1': 0.3, 'eca_a2': 1.0, 'eca_a3': 5.0, 'default': 0.1},
+    'Sulfatos (SO4=) (mg/L)': {'minsa': 250.0, 'eca_a1': 250.0, 'eca_a2': 250.0, 'eca_a3': 500.0, 'default': 80.0},
+    'Turbidez (UNT)': {'minsa': 5.0, 'eca_a1': 5.0, 'eca_a2': 100.0, 'eca_a3': 100.0, 'default': 2.0}
+}
 
-# --- INTERFAZ ---
-st.title("💧 Sistema Híbrido de Diagnóstico de Calidad del Agua")
+# =========================================================================
+# 4. INTERFAZ: PESTAÑAS
+# =========================================================================
+tab1, tab2, tab3 = st.tabs([
+    "📊 14 Parámetros Base (ML)", 
+    "➕ Parámetros Extras (Normativa)", 
+    "🔬 Diagnóstico y Tratamiento"
+])
 
-tab1, tab2, tab3 = st.tabs(["🤖 Inputs para IA", "⚖️ Inputs para Normativa", "📋 Diagnóstico Final"])
-
-inputs_ml = {}
-inputs_reg = {}
+inputs = {}
 
 with tab1:
-    st.subheader("1. Parámetros para el Modelo de IA")
-    st.write("Estos datos alimentan el algoritmo de predicción.")
-    cols = st.columns(3)
-    for i, feature in enumerate(FEATURES_ML):
-        with cols[i % 3]:
-            inputs_ml[feature] = input_variable(feature, 7.0 if feature=='pH' else 0.0)
+    st.subheader("Parámetros Fisicoquímicos Principales")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        inputs['pH'] = st.number_input("pH", min_value=0.0, max_value=14.0, value=7.5, step=0.1)
+        inputs['CE'] = st.number_input("Conductividad (µS/cm)", min_value=0.0, value=400.0, step=10.0)
+        inputs['T'] = st.number_input("Temperatura (°C)", min_value=0.0, value=18.0, step=0.5)
+        inputs['OD'] = st.number_input("Oxígeno Disuelto (mg/L)", min_value=0.0, value=7.5, step=0.1)
+        inputs['DBO'] = st.number_input("DBO5 (mg/L)", min_value=0.0, value=2.0, step=0.1)
+
+    with col2:
+        inputs['CT'] = st.number_input("Coliformes Termotolerantes (NMP/100mL)", min_value=0.0, value=10.0, step=1.0)
+        inputs['AyG'] = st.number_input("Aceites y Grasas (mg/L)", min_value=0.0, value=0.1, step=0.1)
+        inputs['ArT'] = st.number_input("Arsénico Total (mg/L)", min_value=0.0, format="%.5f", value=0.002)
+        inputs['PbT'] = st.number_input("Plomo Total (mg/L)", min_value=0.0, format="%.5f", value=0.001)
+        inputs['CuT'] = st.number_input("Cobre Total (mg/L)", min_value=0.0, format="%.5f", value=0.005)
+
+    with col3:
+        inputs['MnT'] = st.number_input("Manganeso Total (mg/L)", min_value=0.0, format="%.5f", value=0.02)
+        inputs['Ca'] = st.number_input("Calcio (mg/L)", min_value=0.0, value=45.0, step=1.0)
+        inputs['Mg'] = st.number_input("Magnesio (mg/L)", min_value=0.0, value=12.0, step=1.0)
+        inputs['Dureza'] = st.number_input("Dureza Total (como CaCO3) (mg/L)", min_value=0.0, value=150.0)
 
 with tab2:
-    st.subheader("2. Parámetros para Normativa Legal (ECA/MINSA)")
-    st.write("Estos no afectan a la IA, pero son obligatorios para el informe legal.")
-    cols_reg = st.columns(2)
-    for i, (name, limits) in enumerate(PARAMETROS_NORMATIVOS.items()):
-        with cols_reg[i % 2]:
-            inputs_reg[name] = input_variable(name, limits['default'])
+    st.subheader("Robustecer evaluación con parámetros ECA / MINSA")
+    seleccionados = st.multiselect("Seleccionar extras:", list(PARAMETROS_ADICIONALES_POOL.keys()))
+    
+    inputs_adicionales = {}
+    if seleccionados:
+        col_adv1, col_adv2 = st.columns(2)
+        for idx, param in enumerate(seleccionados):
+            target_col = col_adv1 if idx % 2 == 0 else col_adv2
+            with target_col:
+                inputs_adicionales[param] = st.number_input(
+                    f"{param}", value=PARAMETROS_ADICIONALES_POOL[param]['default'], format="%.4f"
+                )
 
-# --- PROCESAMIENTO ---
+# =========================================================================
+# 5. MOTOR DE EVALUACIÓN (PESTAÑA 3)
+# =========================================================================
 with tab3:
-    st.subheader("🔍 Diagnóstico")
+    st.subheader("🔍 Resultados e Informe Técnico")
     
-    # 1. PREDICCIÓN IA
+    fallas_minsa = []
+    eval_dict = {**NORMATIVA_BASE, **{k: PARAMETROS_ADICIONALES_POOL[k] for k in inputs_adicionales}}
+    valores_totales = {**inputs, **inputs_adicionales}
+    
+    for param, limits in eval_dict.items():
+        val = valores_totales[param]
+        minsa_lim = limits['minsa']
+        
+        if param == 'pH':
+            if val < minsa_lim[0] or val > minsa_lim[1]: fallas_minsa.append((param, val, f"Rango: {minsa_lim}"))
+        elif limits.get('invertido', False):
+            if val < minsa_lim: fallas_minsa.append((param, val, f"Mínimo: {minsa_lim}"))
+        else:
+            if val > minsa_lim: fallas_minsa.append((param, val, f"Máximo: {minsa_lim}"))
+
+    es_potable_minsa = len(fallas_minsa) == 0
+    peor_categoria_eca = "A1"
+    detalles_eca = []
+
+    if not es_potable_minsa:
+        for param, limits in eval_dict.items():
+            val = valores_totales[param]
+            if param == 'pH':
+                if limits['eca_a1'][0] <= val <= limits['eca_a1'][1]: cat = "A1"
+                elif limits['eca_a2'][0] <= val <= limits['eca_a2'][1]: cat = "A2"
+                else: cat = "A3"
+            elif limits.get('invertido', False):
+                if val >= limits['eca_a1']: cat = "A1"
+                elif val >= limits['eca_a2']: cat = "A2"
+                elif val >= limits['eca_a3']: cat = "A3"
+                else: cat = "EXCEDE A3"
+            else:
+                if val <= limits['eca_a1']: cat = "A1"
+                elif val <= limits['eca_a2']: cat = "A2"
+                elif val <= limits['eca_a3']: cat = "A3"
+                else: cat = "EXCEDE A3"
+            
+            detalles_eca.append({'Parámetro': param, 'Valor': val, 'Categoría': cat})
+            order = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4}
+            if order[cat] > order[peor_categoria_eca]:
+                peor_categoria_eca = cat
+
+    ml_result_text = "Desactivado"
+    prob_potable = 0.0
+    
     if modelo_pipeline is not None:
-        input_df = pd.DataFrame([inputs_ml])
+        features_order = ['pH', 'CE', 'T', 'OD', 'DBO', 'CT', 'AyG', 'ArT', 'PbT', 'CuT', 'MnT', 'Ca', 'Mg', 'Dureza']
+        features_vector = pd.DataFrame([[inputs[feat] for feat in features_order]], columns=features_order)
+        
         try:
-            # Aquí ocurre la magia: si hay NaNs, el pipeline los imputa
-            prob = modelo_pipeline.predict_proba(input_df)[0]
+            prob = modelo_pipeline.predict_proba(features_vector)[0]
             prob_potable = prob[1]
-            
-            col_res1, col_res2 = st.columns(2)
-            with col_res1:
-                st.metric("Probabilidad de Potabilidad", f"{prob_potable*100:.1f}%")
-                st.progress(float(prob_potable))
-            
-            with col_res2:
-                if prob_potable >= 0.75:
-                    st.success("✅ IA: El agua es clasificada como APTA.")
-                else:
-                    st.error("❌ IA: El agua es clasificada como NO APTA.")
+            pred = 1 if prob_potable >= 0.75 else 0
+            ml_result_text = f"Potable (Prob: {prob_potable*100:.1f}%)" if pred == 1 else f"No Potable (Prob: {prob[0]*100:.1f}%)"
         except Exception as e:
-            st.error(f"Error en IA: {e}")
+            ml_result_text = f"Error IA: {e}"
 
-    st.divider()
+    col_res1, col_res2 = st.columns(2)
+    with col_res1:
+        st.markdown("#### 🏛️ Evaluación Legal (MINSA)")
+        if es_potable_minsa:
+            st.markdown("""<div class="card-potable"><h4>✅ CUMPLE MINSA</h4><p>Apto para consumo directo.</p></div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""<div class="card-nopotable"><h4>❌ NO CUMPLE MINSA</h4><p>Violación en {len(fallas_minsa)} parámetros.</p></div>""", unsafe_allow_html=True)
+            with st.expander("Ver variables infractoras"):
+                st.dataframe(pd.DataFrame(fallas_minsa, columns=['Variable', 'Valor', 'Límite']))
 
-    # 2. REPORTE NORMATIVO (MINSA)
-    st.subheader("🏛️ Evaluación Normativa (MINSA)")
-    
-    # Combinamos para la evaluación, filtrando los que no se ingresaron (NaN)
-    report_data = {**inputs_ml, **inputs_reg}
-    
-    fallas = []
-    # Simulación de chequeo rápido (puedes ampliarlo con los diccionarios de límites)
-    for param, val in report_data.items():
-        if not np.isnan(val):
-            # Ejemplo de lógica: si tienes diccionario de límites, úsalo aquí
-            # if val > limite: fallas.append(param)
-            pass 
-            
-    if not fallas:
-        st.write("✅ Todos los parámetros ingresados están dentro de los rangos legales.")
-    else:
-        st.write(f"⚠️ Se encontraron {len(fallas)} parámetros fuera de norma.")
-        st.write(fallas)
+    with col_res2:
+        st.markdown("#### 🤖 Predicción IA (Random Forest / GB)")
+        if modelo_pipeline is not None:
+            st.metric(label="Clasificador (Umbral Seguridad 0.75)", value=ml_result_text)
+            st.progress(float(prob_potable), text="Probabilidad general de Potabilidad")
+
+    if not es_potable_minsa:
+        st.markdown("---")
+        st.markdown(f"### 🛠️ Plan de Tratamiento (ECA Categoría 1 - Peor Nivel: {peor_categoria_eca})")
+        if peor_categoria_eca == "A1":
+            st.markdown("""<div class="treatment-box">🟢 <b>Subcategoría A1: Desinfección Simple.</b><br>Requiere cloración estándar u ozonización para eliminar carga microbiológica antes de distribuir.</div>""", unsafe_allow_html=True)
+        elif peor_categoria_eca == "A2":
+            st.markdown("""<div class="treatment-box" style="border-left-color: #FD7E14; background-color: #FFE8D6;">🟠 <b>Subcategoría A2: Tratamiento Convencional.</b><br>Implementar Coagulación, Floculación, Sedimentación, Filtración rápida y Desinfección.</div>""", unsafe_allow_html=True)
+        elif peor_categoria_eca == "A3":
+            st.markdown("""<div class="treatment-box" style="border-left-color: #DC3545; background-color: #F8D7DA;">🔴 <b>Subcategoría A3: Tratamiento Avanzado.</b><br>Contaminación alta. Requiere Ósmosis Inversa, Carbón Activado o Procesos de Oxidación Avanzada.</div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""<div class="treatment-box" style="background-color: #343A40; color: #FFF; border-left-color: #000;">⚫ <b>EXCEDE A3: ALERTA CRÍTICA.</b><br>El agua supera la capacidad de las plantas potabilizadoras convencionales. Descarte inmediato para consumo.</div>""", unsafe_allow_html=True)
+
+        with st.expander("Ver desglose ECA completo"):
+            st.dataframe(pd.DataFrame(detalles_eca))
