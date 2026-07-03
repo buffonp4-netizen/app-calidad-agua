@@ -512,3 +512,44 @@ with tab3:
                 
             if incumplimientos_minsa:
                 st.table(pd.DataFrame(incumplimientos_minsa))
+                
+                # NUEVA SECCIÓN: Evaluación ECA para parámetros que excedieron MINSA
+                if excedentes:
+                    st.markdown("#### 🌿 Clasificación ECA para parámetros que exceden MINSA")
+                    st.write("Se evalúa el nivel de tratamiento requerido según los estándares ECA (Categoría 1).")
+                    
+                    eca_norma_data = []
+                    peor_cat_norma = "A1"
+                    orden_eca = {"A1": 1, "A2": 2, "A3": 3, "EXCEDE A3": 4, "Sin valor en normativa": 0}
+                    
+                    for p in excedentes:
+                        param_name = p["Parámetro"]
+                        valor = p["Valor colocado por el usuario"]
+                        cat, lim_eca = obtener_categoria_eca(param_name, valor)
+                        eca_norma_data.append({
+                            "Parámetro": param_name,
+                            "Valor colocado por el usuario": valor,
+                            "Límite ECA (categoría)": lim_eca,
+                            "Categoría asignada ECA": cat
+                        })
+                        if orden_eca.get(cat, 0) > orden_eca.get(peor_cat_norma, 0):
+                            peor_cat_norma = cat
+                    
+                    st.table(pd.DataFrame(eca_norma_data))
+                    st.write(f"**Peor nivel detectado:** `{peor_cat_norma}`")
+                    
+                    if peor_cat_norma == "A1":
+                        st.info("🟢 **Categoría A1:** Aguas que pueden ser potabilizadas con **desinfección** (cloración, ozonización, etc.).")
+                    elif peor_cat_norma == "A2":
+                        st.warning("🟠 **Categoría A2:** Aguas que pueden ser potabilizadas con **tratamiento convencional** (coagulación, floculación, decantación, filtración y desinfección).")
+                    elif peor_cat_norma == "A3":
+                        st.error("🔴 **Categoría A3:** Aguas que pueden ser potabilizadas con **tratamiento avanzado** (convencional + ósmosis inversa, carbón activado, oxidación avanzada).")
+                    elif peor_cat_norma == "EXCEDE A3":
+                        st.markdown("""
+                        <div class="danger-box">
+                            ⚠️ <b>ALERTA CRÍTICA:</b> Existen parámetros que superan el límite de la categoría A3 (tratamiento avanzado).<br>
+                            Esta agua <b>no es apta</b> para potabilización convencional ni avanzada. Se requiere una fuente alternativa o procesos especializados.
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info("Los parámetros no cuentan con valores de referencia ECA.")
